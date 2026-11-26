@@ -1,0 +1,11 @@
+clk    R8
+key[0] J15
+sw[0]  M1
+sw[1]  T8
+sw[2]  B9
+sw[3]  M15
+led[0] A15
+led[1] A13
+led[2] B13
+led[3] A11
+led[4] D1

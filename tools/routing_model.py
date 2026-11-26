@@ -11,6 +11,8 @@ every function returns {position: value}. Node names follow Quartus's timing / .
   m.lut_input(dst, src)                  LUT-input mux: dst "LCCOMB_X_Y_Nn.datab", src node driving it
   m.local_line(x, y, k, src)             LAB local line k driven by src (structural table)
   m.wire_chain(buf, wire, line)          LE_BUFFER -> R4/C4 -> LOCAL_INTERCONNECT chain (wire table)
+  m.wire_hop(a, b)                       one inter-LAB hop with an absolute decoded code (fuzz/wire_hops.json,
+                                         tools/wire_harvest.py): LE_BUFFER->wire, wire->wire, wire->line
   m.hops_to_bits(hops)                   [(a, b), ...] -> ({pos: val}, [unknown hops])
 Element-plane rules (LE used, output selects, clock selects) need the whole LAB and stay in
 tools/blinky_gen.py for now; hops_to_bits covers routing. Tables: fuzz/lut_slots.json, lab_grid.json,
@@ -40,6 +42,7 @@ class RoutingModel:
         self.LIM = _load("lim_codes_ll.json")
         self.LIS = _load("li_struct.json") or {}
         self.WIRES = _load("wire_codes.json") or []
+        self.HOPS = _load("wire_hops.json") or {}
         self.LUTREL = {(self.SLOT[k][0], LEOFF[n] + ((1 - self.SLOT[k][1]) if (n // 2) % 2 else self.SLOT[k][1]))
                        for n in LEOFF for k in self.SLOT}
 
@@ -85,6 +88,19 @@ class RoutingModel:
                 return {self.pos(x, y, df, db): v for df, db, v in e["bits"]}
         return None
 
+    @staticmethod
+    def hop_key(a, b):
+        f = lambda n: (lambda m: f"{m[1]}:{int(m[2])},{int(m[3])},{int(m[5])}")(NODE.match(n))
+        return f"{f(a)}>{f(b)}"
+
+    def wire_hop(self, a, b):
+        """Absolute (frame, byte, bit) -> 1 for a decoded inter-LAB hop, or None."""
+        try:
+            bits = self.HOPS.get(self.hop_key(a, b))
+        except TypeError:
+            return None
+        return None if bits is None else {tuple(p): 1 for p in bits}
+
     def hops_to_bits(self, hops):
         """hops: [(a, b)] as in Quartus timing reports. Returns ({pos: val}, [hops not encodable])."""
         bits, unknown = {}, []
@@ -99,12 +115,16 @@ class RoutingModel:
                 m = NODE.match(b)
                 x, y, k = int(m[2]), int(m[3]), int(m[5])
                 if a.startswith(("R4_", "C4_", "R24_", "C16_")):
-                    srcs = into.get(a, [])
-                    r = self.wire_chain(srcs[0], a, b) if srcs else None
+                    r = self.wire_hop(a, b)
+                    if r is None:
+                        srcs = into.get(a, [])
+                        r = self.wire_chain(srcs[0], a, b) if srcs else None
                 else:
                     r = self.local_line(x, y, k, a)
-            elif a.startswith("LE_BUFFER") and b.startswith(("R4_", "C4_", "R24_", "C16_")):
-                continue                            # encoded with the wire -> line hop (wire_chain)
+            elif b.startswith(("R4_", "C4_", "R24_", "C16_")) and a.startswith(("LE_BUFFER", "R4_", "C4_", "R24_", "C16_")):
+                r = self.wire_hop(a, b)
+                if r is None and a.startswith("LE_BUFFER"):
+                    continue                        # may be encoded with the wire -> line hop (wire_chain)
             elif b.startswith(("LE_BUFFER", "LOCAL_LINE", "FF_")) or ".combout" in a or ".q" in a or b.endswith(".d"):
                 continue                            # LE-internal / element-plane: per-LE rules
             if r is None:

@@ -25,7 +25,87 @@ from rbf import Rbf
 LIM = json.load(open(R + "/fuzz/lim_codes_ll.json"))
 LIS = json.load(open(R + "/fuzz/li_struct.json"))
 PORTS = ["dataa", "datab", "datac", "datad"]
+# decoded inter-LAB routes (tools/wire_harvest.py): every hop has a code in fuzz/wire_hops.json.
+# CHAINS[(sx, sy, buffer)] -> [route]; route = [[type, x, y, i], ...] from LE_BUFFER to LOCAL_INTERCONNECT
+CHAINS = collections.defaultdict(list)
+_wc = os.path.join(R, "fuzz", "wire_chains.json")
+for _r in (json.load(open(_wc)) if os.path.exists(_wc) else []):
+    if _r[0][0] == "LE_BUFFER" and _r[-1][0] == "LOCAL_INTERCONNECT":
+        CHAINS[(_r[0][1], _r[0][2], _r[0][3])].append(_r)
+import glob as _glob                       # vertical column chains (tools/col_vert.py), expanded per row phase
+_LEGAL = {tuple(map(int, l.split())) for l in open(os.path.join(R, "work", "grid", "legal.txt"))}
+for _f in _glob.glob(os.path.join(R, "fuzz", "col_vert_*.json")):
+    for _e in json.load(open(_f)):
+        for _yd in range(1, 34):
+            if _yd % 4 != _e["phase"] or (_e["x"], _yd) not in _LEGAL:
+                continue
+            _r = [[h[0], _e["x"] + h[1], _yd + h[2], h[3]] for h in _e["chain"]]
+            if (_r[0][1], _r[0][2]) in _LEGAL:
+                CHAINS[(_r[0][1], _r[0][2], _r[0][3])].append(_r)
+REACH = collections.defaultdict(set)       # (src LAB, dst LAB) -> buffers with a decoded route
+for (_x, _y, _b), _rs in CHAINS.items():
+    for _r in _rs:
+        REACH[((_x, _y), (_r[-1][1], _r[-1][2]))].add(_b)
 LED_LAB, LED_LE = (38, 31), 2           # FF N3 of LAB (38,31) drives LED0 (decoded output path)
+# measured pin paths (tools/pnr/io_probe.py): pin -> slot LE, its bits, and (inputs) the local line / LUT port
+# All pins are measured together (io_probe.py --all), so their routes don't collide: one bundle table,
+# applied whenever a design uses any pin besides LED0, with all 13 slots reserved.
+IOALL = json.load(open(R + "/fuzz/io_paths_all.json")) if os.path.exists(R + "/fuzz/io_paths_all.json") else {"inputs": {}, "outputs": {}, "routes": {}}
+IO_SLOT = {"A15": [LED_LAB[0], LED_LAB[1], LED_LE]}       # LED0: decoded path in fuzz/paths.json
+IO_SLOT.update({p: v for p, v in IOALL["inputs"].items()})
+IO_SLOT.update({p: v for p, v in IOALL["outputs"].items()})
+IO = {p: {"route": IOALL["routes"][p]} for p in IOALL["inputs"]}
+
+
+def read_pins(path):
+    """constraint file: 'port[bit] PIN' or 'port PIN' per line; returns {(port, bit): pin}"""
+    pins = {}
+    for l in open(path):
+        l = l.split("#")[0].split()
+        if len(l) == 2:
+            m = re.match(r"(\w+)(?:\[(\d+)\])?$", l[0])
+            pins[(m[1], int(m[2] or 0))] = l[1].upper()
+    return pins
+
+
+def add_io(ports, luts, dffs, pins, absorb=True):
+    """Insert a register LE per input pin (pin -> LUT -> FF at the pin's slot; users read the FF) and per
+    output pin (net -> LUT -> FF at the LED's slot). Returns (fixed LE names -> slot, pin nets -> (pin, port))."""
+    fixed, ext, outs = {}, {}, []
+    absorbed = ADD_IO_ABSORBED
+    for (pname, bit), pin in pins.items():
+        if pname == "clk":
+            continue
+        if pin not in IO_SLOT:
+            sys.exit(f"pnr: pin {pin} has no decoded path (run tools/pnr/io_probe.py {pin})")
+        direction, bits = ports[pname]
+        net = bits[bit]
+        if direction == "input":
+            q = f"io_{pin}_q"
+            for l in luts:
+                l["ins"] = [q if n_ == net else n_ for n_ in l["ins"]]
+            for f in dffs:
+                if f["d"] == net:
+                    f["d"] = q
+            lname = f"io_{pin}_lut"
+            luts.append({"name": lname, "ins": [net], "out": f"io_{pin}_w", "init": [0, 1]})
+            dffs.append({"name": f"io_{pin}_ff", "d": f"io_{pin}_w", "q": q, "c": None})
+            fixed[lname] = tuple(IO_SLOT[pin])
+            rt = IO[pin]["route"]
+            ext[net] = (pin, tuple(IO_SLOT[pin]), rt["port"], rt["lines"])
+        else:
+            own = [f for f in dffs if f["q"] == net and f["name"] not in fixed] if absorb else []
+            if own:                              # already a register: place it at the LED's slot, no extra cycle
+                fixed[own[0]["name"]] = tuple(IO_SLOT[pin])
+                absorbed[pin] = own[0]["name"]
+            else:                                # combinational output: insert an output register
+                q = f"io_{pin}_q"
+                lname = f"io_{pin}_lut"
+                luts.append({"name": lname, "ins": [net], "out": f"io_{pin}_w", "init": [0, 1]})
+                dffs.append({"name": f"io_{pin}_ff", "d": f"io_{pin}_w", "q": q, "c": None})
+                fixed[lname] = tuple(IO_SLOT[pin])
+            outs.append(pin)
+    return fixed, ext, outs
 
 
 # ---------------------------------------------------------------- front end
@@ -88,13 +168,15 @@ def drivers(les):
 
 
 # ---------------------------------------------------------------- place
-def place(les, labs, led_net, seed):
+def place(les, labs, fixed_names, seed):
     rnd = random.Random(seed)
     drv = drivers(les)
     slots = [(x, y, n) for (x, y) in labs for n in range(0, 32, 2)]
-    led_le = drv[led_net][0]
-    assert drv[led_net][1] == "reg", "the LED must be driven by a register"
-    fixed = {led_le: (LED_LAB[0], LED_LAB[1], LED_LE)}
+    fixed = {e["id"]: fixed_names[e["lut"]["name"]] for e in les if e["lut"]["name"] in fixed_names}
+    fixed.update({e["id"]: fixed_names[e["ff"]["name"]] for e in les if e["ff"] and e["ff"]["name"] in fixed_names})
+    if any(tuple(v) != (LED_LAB[0], LED_LAB[1], LED_LE) for v in fixed.values()):      # bundle in use
+        reserved = {tuple(v) for p, v in IO_SLOT.items() if p != "A15"} - set(fixed.values())
+        slots = [s_ for s_ in slots if s_ not in reserved]
     free = [s for s in slots if s not in fixed.values()]
     others = [e["id"] for e in les if e["id"] not in fixed]
     if len(others) > len(free):
@@ -120,6 +202,10 @@ def place(les, labs, led_net, seed):
                 if t == s:
                     continue
                 dy = t[1] - s[1]
+                n_ = pos[drv[net][0]][2]
+                if REACH.get((s, t), set()) & {n_, n_ + 1}:
+                    c += 20                            # a decoded R4/C4 route exists from this LE's buffers
+                    continue
                 if t[0] != s[0] or abs(dy) != 1:
                     c += 1000                          # no decoded path at all
                 else:
@@ -133,7 +219,7 @@ def place(les, labs, led_net, seed):
         return c
 
     cur = cost()
-    T = 50.0
+    T = float(os.environ.get('PNR_T0', '2000'))     # high enough to cross the 500/1000 penalties early
     movable = others
     occupied = {v: k for k, v in pos.items()}
     for it in range(int(os.environ.get('PNR_ITERS', '40000'))):
@@ -162,6 +248,10 @@ def place(les, labs, led_net, seed):
 
 
 # ---------------------------------------------------------------- route
+EXT = {}                                       # pin net -> (pin, slot, port, lines); set by main()
+ADD_IO_ABSORBED = {}                           # output pin -> design FF placed at its slot
+
+
 def route(les, pos):
     """Per LAB: give every LUT input a path with decoded codes. Returns (port maps, hops, problems)."""
     drv = drivers(les)
@@ -177,6 +267,11 @@ def route(les, pos):
     def options(lab, n, port, net):
         """paths (label, resources needed) from net to LE n's port in lab"""
         out = []
+        if net in EXT:
+            pin, slot, pport, lines = EXT[net]
+            if (lab[0], lab[1], n) == tuple(slot) and port == pport:
+                out.append(("pin", [((lab, "line", j), ("pin", pin)) for j in lines], []))
+            return out
         if net not in drv:
             return out
         i, kind = drv[net]
@@ -198,9 +293,23 @@ def route(les, pos):
                     out.append(("buf", res, [(src, f"LE_BUFFER_X{sx}_Y{sy}_N0_I{b}"),
                                              (f"LE_BUFFER_X{sx}_Y{sy}_N0_I{b}", f"LOCAL_INTERCONNECT_X{x}_Y{y}_N0_I{j}"),
                                              (f"LOCAL_INTERCONNECT_X{x}_Y{y}_N0_I{j}", f"LCCOMB_X{x}_Y{y}_N{n}.{port}")]))
+        node = lambda h: f"{h[0]}_X{h[1]}_Y{h[2]}_N0_I{h[3]}"
+        for b in (m, m + 1):
+            for rt in CHAINS.get((sx, sy, b), []):
+                j = rt[-1][3]
+                if (rt[-1][1], rt[-1][2]) != lab or f"LOCAL_INTERCONNECT_I{j}" not in codes:
+                    continue
+                res = [((sx, sy, "buf", b), (net, kind))] + [(("wire", tuple(w)), net) for w in rt[1:-1]] + [((lab, "line", j), net)]
+                hp = [(src, node(rt[0]))] + [(node(a_), node(b_)) for a_, b_ in zip(rt, rt[1:])] + [(node(rt[-1]), f"LCCOMB_X{x}_Y{y}_N{n}.{port}")]
+                out.append(("wire", res, hp))
         return out
 
     owner = {}                                   # resource -> value
+    if EXT:                                      # bundle in use: every bundled pin's local line is taken
+        for p_, r_ in IOALL["routes"].items():
+            x_, y_, _n = IOALL["inputs"][p_]
+            for j in r_["lines"]:
+                owner[((x_, y_), "line", j)] = ("pin", p_)
 
     def fits(res):
         return all(owner.get(k, v) == v for k, v in res)
@@ -223,7 +332,7 @@ def route(les, pos):
                 ok = True
                 for net, port in zip(uniq, perm):
                     opts = options(lab, n, port, net)
-                    opts.sort(key=lambda o: ({"own": 0, "ll": 1, "buf": 2}[o[0]], sum(1 for k, v in o[1] if k not in owner)))
+                    opts.sort(key=lambda o: ({"pin": 0, "own": 0, "ll": 1, "buf": 2, "wire": 3}[o[0]], sum(1 for k, v in o[1] if k not in owner)))
                     chosen = None
                     for o in opts:
                         if fits(o[1]):
@@ -303,6 +412,23 @@ def write(name, les, pos, pm, hops, clk_net):
     return d
 
 
+RESULT = None
+
+
+def try_place_route(les, labs, fixed_names, seed, attempts=int(os.environ.get("PNR_ATTEMPTS", "25"))):
+    global RESULT
+    for attempt in range(attempts):
+        pos, c = place(les, labs, fixed_names, seed + attempt)
+        if c >= 500:                       # 500: a vertical link from the wrong LE; 1000: no decoded path
+            continue
+        pm, hops, probs = route(les, pos)
+        if not probs:
+            RESULT = (pos, c, pm, hops)
+            return True
+        print(f"pnr: seed {seed + attempt}: placement cost {c}, routing failed: {probs[0][:200]}")
+    return False
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     vfile, name = args[0], args[1]
@@ -311,25 +437,27 @@ def main():
         labs = [tuple(map(int, s.split(","))) for s in sys.argv[sys.argv.index("--labs") + 1].split(":")]
     seed = int(sys.argv[sys.argv.index("--seed") + 1]) if "--seed" in sys.argv else 1
     os.makedirs(f"{R}/work/pnr", exist_ok=True)
-    ports, luts, dffs = synth(vfile, f"{R}/work/pnr/{name}.json")
-    les = pack(ports, luts, dffs)
-    clk_net = ports["clk"][1][0]
-    led_net = ports["led"][1][0]
-    print(f"pnr: {len(luts)} LUTs, {len(dffs)} DFFs -> {len(les)} LEs")
-    for attempt in range(20):
-        pos, c = place(les, labs, led_net, seed + attempt)
-        if c >= 1000:
-            print(f"pnr: seed {seed + attempt}: placement cost {c} (needs an undecoded inter-LAB path)")
-            continue
-        pm, hops, probs = route(les, pos)
-        if not probs:
+    shutil.rmtree(f"{R}/work/{name}", ignore_errors=True)          # no stale results from an older run
+    pins = read_pins(sys.argv[sys.argv.index("--pins") + 1]) if "--pins" in sys.argv else {("clk", 0): "R8", ("led", 0): "A15"}
+    for absorb in (True, False):     # outputs driven by a register: place it at the slot; else insert one
+        ports, luts, dffs = synth(vfile, f"{R}/work/pnr/{name}.json")
+        ADD_IO_ABSORBED.clear(); EXT.clear()
+        fixed_names, ext, outs = add_io(ports, luts, dffs, pins, absorb)
+        EXT.update(ext)
+        les = pack(ports, luts, dffs)
+        if try_place_route(les, labs, fixed_names, seed):
             break
-        print(f"pnr: seed {seed + attempt}: placement cost {c}, routing failed: {probs}")
+        print(f"pnr: no routable placement with absorb={absorb}")
     else:
         sys.exit("pnr: no routable placement found")
+    pos, c, pm, hops = RESULT
+    clk_net = ports["clk"][1][0]
+    print(f"pnr: {len(luts)} LUTs, {len(dffs)} DFFs -> {len(les)} LEs")
     print(f"pnr: placed (cost {c}), routed {len(hops)} hops, LABs {sorted({p[:2] for p in pos.values()})}")
     d = write(name, les, pos, pm, hops, clk_net)
-    json.dump({"placement": {str(k): v for k, v in pos.items()}, "les": [{"id": e["id"], "lut": e["lut"]["name"], "ff": e["ff"]["name"] if e["ff"] else None} for e in les]},
+    json.dump({"pins": {f"{k[0]}[{k[1]}]": v for k, v in pins.items()}, "outputs": outs, "absorbed": ADD_IO_ABSORBED,
+               "inputs": sorted({v[0] for v in ext.values()}),
+               "placement": {str(k): v for k, v in pos.items()}, "les": [{"id": e["id"], "lut": e["lut"]["name"], "ff": e["ff"]["name"] if e["ff"] else None} for e in les]},
               open(d + "/pnr.json", "w"), indent=0)
     print(f"pnr: design directory {d}")
 

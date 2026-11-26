@@ -368,3 +368,55 @@ Results: pnr_cnt24_q model-only == Quartus (byte-identical); bl2_full still iden
 pnr_cnt24 / pnr_lfsr regenerated with OUR routing (tools/pnr/pnr.py): every local line they use has a 2-bit
 structural code (incl. the vertical-below link, used by both). Lesson: an empty forced-probe code means
 "not measured", not "all zero" — measure such pairs against a tied base.
+
+## General inter-LAB decode, first attempt (2026-11-26) — random harvesting does not converge
+- tools/wire_harvest.py: 200 naturally routed single-net designs (source FF -> LUT datab in another LAB of
+  X30..41 x Y24..33), route from the .rcf, on-bits vs a base without the source/net, minus element-plane
+  positions; per-hop codes by intersection with explained-bit subtraction; 80/20 hold-out.
+- Result: 675 distinct hops (LE_BUFFER>C4 116, C4>R4 89, R4>LOCAL_INTERCONNECT 94, C4>LOCAL_INTERCONNECT
+  62, R4>R4 57, C4>C4 50, LE_BUFFER>R4 40, R4>C4 34, C16 2), but only 12 occur twice even with relative
+  keys (destination column exact, row phase y%4, source as offset). No held-out route is fully covered,
+  so there is no accuracy figure; random pairs are too diverse (wire index x position) to repeat.
+- Infrastructure in place for when codes exist: routing_model.wire_hop(a, b) (fuzz/wire_hops.json),
+  hops_to_bits uses it; blinky_gen emits WIREHOP bits; tools/pnr/pnr.py routes through fully decoded
+  chains (fuzz/wire_chains.json, CHAINS/REACH, "wire" option, wires as owned resources) and its placer
+  treats LAB pairs with a decoded chain as connected (backup: tools/pnr/pnr.py.bak_wires).
+- lfsr_slow still fails to place ("needs an undecoded inter-LAB path"): only 4 decoded chains.
+- Next (targeted, should converge): enumerate the chains Quartus uses inside one column stack
+  (x = 38, y = 26..34) — LE_BUFFER -> C4 -> LOCAL_INTERCONNECT between rows y and y +/- 1..4 — and
+  replicate each relative chain with force3_probe at >= 3 rows of the same y%4 phase. That gives the
+  router vertical reach of 4 rows with few distinct codes (C4 index x source buffer x line).
+
+## Open P&R: input pins and LED1-7 (tools/pnr/io_probe.py, 2026-11-26)
+Pins (DE0-Nano manual): KEY0 J15, KEY1 E1 (debounced, active low), SW0-3 M1 T8 B9 M15, LED0-7 A15 A13 B13
+A11 D1 F3 B1 L3, clock R8, all 3.3-V LVTTL.
+- Each pin has a fixed slot LE in LAB (38,30): inputs J15 E1 M1 T8 B9 M15 at N2..N12 (pin -> LUT port ->
+  FF), LEDs A13 B13 A11 D1 F3 B1 L3 at N14..N26 (slot FF -> pin). LED0 keeps (38,31) N2/FF N3.
+- Measured TOGETHER in one Quartus design (`io_probe.py --all`, work/io_all) so the pin routes don't
+  collide: single-pin probes put E1, M1 and B9 all on local line I1. Bundle table fuzz/io_paths_all.json:
+  166 CRAM + 120 periphery bits = the bits where the models differ from Quartus's build of io_all, with
+  Quartus's values. Input routes (from top.rcf): J15 line 26, E1 3, M1 16, T8 9, B9 12, M15 11, all into
+  LUT port datad. (fuzz/io_paths.json = single-pin probes; output entries there are contaminated by an
+  undecoded cross-LAB route in the probe design; not used.) io_paths_all_lab32.json = an earlier bundle
+  with the LED slots in LAB (38,32); not used (two LABs away from the inputs).
+- pnr.py: `--pins file` ('port[bit] PIN'); every input pin gets an inserted register at its slot (+1
+  cycle); an output driven by a design register gets that register placed at the LED slot (no extra
+  cycle), else an output register is inserted; if that can't be placed, retry with insertion everywhere.
+  When the bundle is used, all 13 slots are reserved and all six input lines are owned by their pins.
+  emit.py = blinky_gen.py (model-only) + the whole bundle -> work/<name>_open.rbf.
+- Placer: start temperature 2000 (PNR_T0) so the 500/1000 vertical-link penalties can be crossed;
+  attempts PNR_ATTEMPTS (25).
+Results (no Quartus in the flow; not board-tested):
+- sw_led (LED0 = ~KEY0, LED1..4 = SW0..3 registered): 7 LUTs/10 DFFs -> 11 LEs, LABs (38,30),(38,31),
+  15 hops, 0 conflicts -> work/pnr_sw_led_open.rbf. simcheck2 (vs Yosys netlist, random inputs, latency
+  accounted) 4000 cycles 0 mismatches.
+- key_toggle (KEY0 press toggles LED0): 4 LEs, 11 hops, 0 conflicts -> work/pnr_key_toggle_open.rbf.
+  simcheck2 4000 cycles 0 mismatches.
+- qcheck2: Quartus accepts our placement + pins; the real LUTs match (Quartus turns route-throughs into
+  feeders or feeds the FF directly). Models + bundle on Quartus's own routing of the same placement are
+  NOT byte-identical: the bundle drives all 13 pins (Quartus's build only the used ones) and Quartus
+  routes pins differently per design. Bits outside the bundle's positions: key_toggle 1 ((1841,96,0)),
+  sw_led 35 (long pin routes in far columns: Quartus chose other routes than in io_all).
+Limits: one fixed slot per pin (all in LAB (38,30)); the bundle always configures all 13 pins (unused LEDs
+are driven by empty slot FFs = 0, i.e. off); +1 cycle on inputs; LED0's path is always emitted by the
+models even if unused; KEY1 (E1) is a clock-capable pin (route starts at CLK_BUFFER) but is used as data.

@@ -27,7 +27,7 @@ The EP4CE22 is a different die, so the constants here are new; no code is shared
 | Pins | settings for every DE0-Nano user pin (8 LEDs, 2 keys, 4 switches, clock) |
 | Periphery block | 6 frames x 298 bytes with frame CRCs, same layout as CRAM; written and checked by `rbf.py` |
 | DE0-Nano blinky from our own tools | **done**: `examples/de0nano_blinky_model_only.rbf` is built from decoded models only (every CRAM and periphery bit), byte-identical to Quartus's build of the same placed design, and runs on the board (24-bit counter, LED0 on A15). Placement and routing choices still come from Quartus reports. A second layout using R4/C4 entries is 5 bits short. |
-| Open place and route (`tools/pnr/`) | **runs on the board**: Verilog -> Yosys -> our packing, annealing placement and routing -> decoded bit models -> `.rbf`, with no Quartus anywhere. `examples/de0nano_cnt24_openflow.rbf` (from `examples/de0nano_cnt24_openflow.v`, a 24-bit counter on LED0) blinks on a DE0-Nano. Limits: 3 LABs next to LED0, clock from R8, vertical links only between LABs (general R4/C4 routing in progress), no input pins, flops power up at 0. |
+| Open place and route (`tools/pnr/`) | **runs on the board**: Verilog -> Yosys -> our packing, annealing placement and routing -> decoded bit models -> `.rbf`, with no Quartus anywhere. `examples/de0nano_cnt24_openflow.rbf` (from `examples/de0nano_cnt24_openflow.v`, a 24-bit counter on LED0) blinks on a DE0-Nano. Inputs and outputs work too: `examples/de0nano_sw_led_openflow.*` (KEY0 -> LED0, DIP SW0-3 -> LED1-4) and `examples/de0nano_key_toggle_openflow.*` (each KEY0 press toggles LED0) run on the board; a 24-bit LFSR runs (LED0 at 50 % duty, measured from video). Limits: logic in 3 LABs next to the pins, fixed pin slots in LAB (38,30), clock from R8, vertical links only between LABs (general R4/C4 routing in progress), flops power up at 0, +1 cycle on inputs. |
 | M9K, multipliers, PLL | not started |
 
 Details are in [NOTES.md](NOTES.md). JTAG reports IDCODE 0x020F30DD, shared by the EP3C25, EP4CE22 and 10CL025 (likely one die).
@@ -52,7 +52,7 @@ python3 tools/route_solve.py          # bit <-> routing hop tags; route_holdout.
 python3 tools/lim_decode.py           # LUT-input mux codes, LAB-relative; lim_holdout.py checks it
 J=3 N=400 python3 tools/route_sparse.py && python3 tools/sparse_solve.py   # single-net specimens
 DESIGN=bl2_full python3 tools/blinky_gen.py   # model-only blinky; openFPGALoader -c usb-blaster <rbf>
-python3 tools/pnr/pnr.py design.v NAME        # open flow: Verilog -> work/pnr_NAME_model_only.rbf
+python3 tools/pnr/pnr.py design.v NAME [--pins NAME.pins]   # open flow: Verilog -> work/pnr_NAME_*.rbf
 ```
 
 Builds go to `work/` (not tracked). Results are written to `fuzz/*.json`.

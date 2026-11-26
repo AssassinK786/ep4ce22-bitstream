@@ -273,6 +273,43 @@ for b, srcs_ in _hop.items():
                         model.pop(absbit(x, y, df, db), None)
                         put(absbit(x, y, df, db), v, "WIRE")
 
+# absolute inter-LAB wire hops (tools/wire_harvest.py -> fuzz/wire_hops.json, via tools/routing_model.py)
+from routing_model import RoutingModel as _RM
+_rm = _RM()
+for a, b in pips:
+    if any(t in a or t in b for t in ("R4_", "C4_", "R24_", "C16_")):
+        r_ = _rm.wire_hop(a, b)
+        for pos_, v_ in (r_ or {}).items():
+            put(pos_, v_, "WIREHOP")
+
+# vertical column chains (tools/col_vert.py -> fuzz/col_vert_<x>.json): code of a whole LE_BUFFER -> C4.. ->
+# LOCAL_INTERCONNECT chain, relative to the destination LAB, valid for that column and row phase (y % 4)
+import glob as _glob
+COLV = [e for f_ in _glob.glob(R + "/fuzz/col_vert_*.json") for e in json.load(open(f_))]
+_into = collections.defaultdict(list)
+for a, b in pips:
+    _into[b].append(a)
+_NODE = re.compile(r"(\w+?)_X(\d+)_Y(\d+)_N0_I(\d+)$")
+for b in list(_into):
+    mb = _NODE.match(b)
+    if not mb or mb[1] != "LOCAL_INTERCONNECT":
+        continue
+    x, y = int(mb[2]), int(mb[3])
+    chain, cur = [[mb[1], 0, 0, int(mb[4])]], b
+    while True:
+        srcs = [s_ for s_ in _into.get(cur, []) if _NODE.match(s_)]
+        if not srcs:
+            break
+        cur = srcs[0]; mm = _NODE.match(cur)
+        chain.insert(0, [mm[1], int(mm[2]) - x, int(mm[3]) - y, int(mm[4])])
+        if mm[1] == "LE_BUFFER":
+            break
+    for e in COLV:
+        if e["x"] == x and e["phase"] == y % 4 and e["chain"] == chain:
+            for df, db in e["bits"]:
+                model.pop(absbit(x, y, df, db), None)
+                put(absbit(x, y, df, db), 1, "COLV")
+
 # ---- check, assemble, residual
 score = collections.Counter()
 wrongs = collections.defaultdict(list)
