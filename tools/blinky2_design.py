@@ -8,11 +8,14 @@ Writes work/<name>/top.v + extra.qsf."""
 import os, sys
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 name = sys.argv[1] if len(sys.argv) > 1 else "bl2_full"
+# optional: xA yA xB yB [pin]  (LAB A holds bits 0..11, LAB B bits 12..23; LED FF at B N3)
+XA, YA, XB, YB = (map(int, sys.argv[2:6]) if len(sys.argv) > 5 else (38, 32, 38, 31))
+PIN = sys.argv[6] if len(sys.argv) > 6 else "A15"
 d = f"{R}/work/{name}"; os.makedirs(d, exist_ok=True)
 NB = 24
 v = ["module top(input clk, output led);", f"  wire [{NB-1}:0] q;", "  wire [8:0] t;", "  assign t[0] = 1'b1;"]
-q = ["set_location_assignment PIN_R8 -to clk", "set_location_assignment PIN_A15 -to led"]
-slots = {"A": [(38, 32, n) for n in range(0, 32, 2)], "B": [(38, 31, n) for n in range(0, 32, 2) if n != 2]}
+q = ["set_location_assignment PIN_R8 -to clk", f"set_location_assignment PIN_{PIN} -to led"]
+slots = {"A": [(XA, YA, n) for n in range(0, 32, 2)], "B": [(XB, YB, n) for n in range(0, 32, 2) if n != 2]}
 used = {"A": 0, "B": 0}
 def take(lab, fixed=None):
     if fixed:
@@ -36,7 +39,7 @@ for g in range(NB // 3):
         for idx in range(16):
             A, B, C, D = idx & 1, idx >> 1 & 1, idx >> 2 & 1, idx >> 3 & 1
             mask |= (A ^ (B & (C if j >= 1 else 1) & (D if j >= 2 else 1))) << idx
-        le(f"l{i}", mask, [f"q[{i}]", tg, c, dd], lab, ff=(f"r{i}", f"q[{i}]"), fixed=(38, 31, 2) if i == NB - 1 else None)
+        le(f"l{i}", mask, [f"q[{i}]", tg, c, dd], lab, ff=(f"r{i}", f"q[{i}]"), fixed=(XB, YB, 2) if i == NB - 1 else None)
     if i0 + 3 < NB:
         le(f"lt{g+1}", 1 << 15, [tg, f"q[{i0}]", f"q[{i0+1}]", f"q[{i0+2}]"], lab)
         v.append(f"  assign t[{g+1}] = lt{g+1}_o;")

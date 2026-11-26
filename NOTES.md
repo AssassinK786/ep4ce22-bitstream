@@ -182,3 +182,105 @@ in routing; the vote method replaced them.
   LAB 32: (-13,4) (13,13) (13,21) (13,44) (14,12); 9 in the left column (frames 1837..1843);
   i.e. local-line bits whose source combination was never seen in training, the LAB-31 bits tied to the
   clock entering as data (BLK_CLK_LIM_I5 -> line I8), the (11, b) rule (2 LEs), one (8, .) buffer bit.
+
+## Closing round (2026-11-26) — not yet byte-identical
+- Training data: tools/fuzz_bv.py, the bl2 counter at 10 other LAB pairs (work/bv_*), added to
+  li_joint.py / feat_solve.py / li_or.py.
+- LAB clock via the control mux: LAB_CONTROL_MUX_I1 fed from local line I8 (BLK_CLK_BUF -> BLK_CLK_LIM ->
+  I8 -> LAB_CONTROL_MUX_I1) sets (-12,32), (-11,32), (1,30) (feat_solve.py, now a feature).
+- tools/li_or.py: line bits as an OR of (line, source) indicators (shared first stage). ACC 0.985:
+  24 bits, holdout 99.27 %. Looser thresholds add bits but lose accuracy (0.95: 68 bits, 97.6 %).
+- Row wrap fixed: rows use frame bytes 1..295 (295 per lane) before continuing on the next lane
+  (rlabel.py; was 294 / from byte 2). Found with bl3 (row Y30 wraps): LUT 8 wrong -> 0, LIM 23 -> 0.
+- Generalisation design bl3 (tools/blinky2_design.py bl3_full 38 30 38 31: LAB A below the LED LAB;
+  clock tree by vote, fuzz/clock_tree3.json).
+- Model-only vs Quartus (CRAM bits differ; periphery identical in both):
+  bl2_full 25: left column 9 (line drivers of I15..I29), frame 8 LE-buffer select 5, frames 13-15
+           (lines I0..I14) 5, frame 9 3, (11, b) 2, frames -14..-2 1.
+  bl3_full 20: left column 11, frames -14..-2 2, frame 8 2, frames 13-15 2, frame 9 1, frames 19/21 2.
+  Most are local-line bits whose value depends on more than one (line, source) pair, plus the LE-buffer
+  select bits (frame 8) and the (11, b) rule.
+
+## Structural round (2026-11-26) — routing constraints (.rcf)
+- `quartus_cdb top --back_annotate=routing` writes top.rcf: the COMPLETE routing of every net
+  (LOCAL_LINE / LE_BUFFER / R4 / C4 / LOCAL_INTERCONNECT hops, branch points, and the physical LUT input
+  `route_port` for every destination). Re-fitting with ROUTING_BACK_ANNOTATION_FILE makes the fitter
+  follow an edited .rcf; an illegal hop is reported ("Error on line number N in Routing Constraints
+  File") and that fan-out is re-routed. Ordinary Quartus input/output -> clean-room controlled experiments.
+  (STA reports only list nets on reported paths; the .rcf is the better label source.)
+- tools/rcf_probe.py: move a LE_BUFFER -> LOCAL_INTERCONNECT hop to every other line and re-fit.
+  Block (38,30) of bl3, 7 such hops: every move of LE_BUFFER I7 (line I31) and I15 (line I33) to any other
+  line is illegal -> each own LE_BUFFER reaches exactly ONE local line of its LAB (fixed wiring:
+  I1->I15, I3->I30, I7->I31, I12->I5, I15->I33, I20->I35, I22->I25 seen). So the (line, own LE_BUFFER)
+  code is fixed per line; what varies is which of a line's legal sources (own LE_BUFFER, neighbour
+  links, R4/C4) drives it. Next experiment: keep the line, change its source (move the driving net to a
+  neighbour LAB / an R4 entry via the .rcf).
+- (11, b) is not the clock source index (BLK_CLK_BUF_I*) nor "lowest register of each 4-LE group"
+  (lowest: 556x0 / 4954x1, others: 442x0 / 2575x1) in this data.
+- bl2_full / bl3_full model-only: unchanged this round (25 / 20 CRAM bits differ; periphery identical).
+
+## .rcf source sweep (2026-11-26)
+- tools/src_sweep.py: single-net designs (source FF at a chosen LE -> dest LUT L.N0 datab), complete routing
+  from the .rcf, code = diff vs the same design with datab = 0. LAB (20,10): neighbour links are fixed
+  wiring with a regular map: left LAB LE_BUFFER I0/2/4/8/10/12/... -> lines 15/16/17/18/19/20/...,
+  I6 -> 31, I14 -> 33, I17 -> 34; right LAB LE_BUFFER I1/3/5/... -> lines 0/1/2/.../13.
+  Every (line, source) sets a 2-bit code inside the line's own group: right-LAB sources (13, 4k) + (15, 4k);
+  left-LAB sources (-19, b) + (-17, b') for lines 16..29, (-16, x) + (-14/-15, x') for 31/33/34;
+  C4 sources frame 14 (+13); R4 sources frames -19/-17, -18 or -14. (Shared "first-stage" bits = the
+  two halves of these 2-bit codes.)
+- tools/force_probe.py: own-LAB and vertical hops forced with edited .rcf (label/branch_point) and re-fit;
+  accepted pairs give codes, e.g. own I3 -> line 30: (-13,4); I5 -> 17: (-18,7)+(-17,7); I7 -> 31:
+  (-16,11)+(-15,11); I12 -> 5: (13,21)+(14,20); I22 -> 25: (-18,50)+(-17,51); I27 -> 13: (13,60)+(14,61);
+  I28 -> 29: (-18,66)+(-17,66); I30 -> 29: (-19,67)+(-17,67). Many pairs were rejected by the fitter
+  (likely .rcf syntax when the pin branch shares the buffer, or the pair is not legal) — incl. the
+  vertical links and own I1/I8/I11/I15/I19/I20 that bl2/bl3 use.
+- tools/li_struct.py -> fuzz/li_struct.json: 46 (line, source) codes; 7 seen identical at >1 LAB, 1
+  disagreeing (31|LE_BUFFER_I7 at (12,5): extra bits, probably a second net). Generator applies them (LI-S):
+  bl2 8/8, bl3 8/8 right.
+- Model-only vs Quartus: bl2_full 23 CRAM bits, bl3_full 19 (periphery identical). Left: OR-model local-line
+  bits for the pairs whose code was not measured (bl2 6, bl3 2 wrong), the (11,b) rule (bl2 2), one frame-8
+  buffer bit each, plus unmodelled bits of the vertical link and own I1/I8/I11/I15/I19/I20 lines.
+- Next: fix the .rcf edit for the rejected pairs (avoid branch_point: give the pin its own source LE, so
+  the forced net has a single branch), then sweep every own buffer and both vertical directions.
+
+## Single-branch .rcf sweep (2026-11-26)
+- tools/force2_probe.py: the source FF drives ONLY the dest LUT (single-branch net); its .rcf block is replaced
+  by LE_BUFFER I<m> -> LOCAL_INTERCONNECT I<k> -> dest WITHOUT route_port (pinning the physical LUT input made
+  most forced lines illegal: each line reaches only some LUT inputs). Diff vs the naturally routed design:
+  bits that turn on = the forced pair's code; bits that turn off = the natural hop's code (also harvested).
+  3 LABs ((20,10), (30,25), (12,5)): 20-22 of 88 candidate pairs legal per LAB (the rest: lines a buffer does
+  not reach). Codes are 2-bit and LAB-relative, e.g. own I8->3 (13,13)+(14,12), I19->10 (13,44)+(14,45),
+  I20->35 (-16,44)+(-13,45), I15->33 (-16,28)+(-15,28), I9->18 (-18,15)+(-17,14), I4->1 (13,4)+(14,4).
+  Line 15 is the default selection: own I1, own I3, vertical (above) I30 -> 15 all have an all-zero code.
+- fuzz/li_struct.json: 60 (line, source) codes, 22 seen identical at >1 LAB, 0 disagreeing (the old
+  multi-branch force_*.json results are no longer used).
+- Generator: structural codes win; the statistical joint/OR tables are skipped for lines with a structural
+  code and never write element-plane frames (-1, 8, 9, 11) — that was where 6 of the OR errors came from.
+  New rule: LAB with clocked FFs -> (-21, 64) = 0 (1 in every empty design; 0 in 1096/1147 clocked LABs).
+- Model-only vs Quartus (periphery identical):
+  bl2_full 9:  LAB 32 (-19,68) (-17,68) (-17,35); frames 1840/1841 byte 203 (outside the LAB windows);
+               LAB 31 (8,17) unmodelled + (8,16) C2BUF wrong (LE-buffer select of the LED FF N2/N3);
+               LAB 31 (11,13) (11,6) (11,b) rule wrong.
+  bl3_full 11: LAB 30 (-18,12) (-17,12) (-17,35), LAB 31 (-18,68) (-17,68) (-18,35) (14,12), (8,16)/(8,17),
+               LAB 30 (19,65) (21,65).
+  The row-byte 68 bits sit just outside the 0..69 window the probes measured (the neighbouring row's
+  share of a line group); frame 8/11 are the register-side LE-buffer select and the (11, b) bit.
+
+## bl2_full model-only = Quartus, byte for byte (2026-11-26)
+work/bl2_full_model_only.rbf is byte-identical to Quartus's bl2_full build (sha256 95c091a230fd55b4...),
+built from decoded models only: the generator reads Quartus's report files for the design (placement, post-fit
+LUT masks, routing hops) but never its bitstream (that is used only to score the model). Last steps:
+- tools/force2_wide.py: force2 codes re-derived with a wide window (row bytes -12..82). Line 15 codes live in
+  the previous row's bytes: own I1 -> 15 = (-18,-2)+(-17,-2); own I3 -> 15 = (-18,-1)+(-17,-1);
+  vertical (LAB above) I30 -> 15 = (-19,-2)+(-17,-2) (tools/tied_probe.py, common to 3 LABs).
+- Register driving its LE_BUFFER needs no select change (force2 src_bits empty) -> frame 8 = 0 for registers.
+  Comb -> LE_BUFFER I<m> of LE n sets (8, LEOFF[n] + off), off = m-n for odd pair members and 1-(m-n) for
+  even ones (mirrored like the LUT slots).
+- (11, b) = clock-pair select: 0 when the FF is clocked straight from BLK_CLK_BUF in a LAB where some FF uses
+  the LAB_CONTROL_MUX clock, else 1 (training data ~97 %; exact on bl2/bl3).
+- LAB clock line i: direct FF clocking from BLK_CLK_BUF_I<i> sets (-17, 30+i) without, (-18, 30+i) with the
+  clock also entering a local line (BLK_CLK_LIM_I<i>); neither if no FF is clocked directly.
+- LAB with clocked FFs: (-21, 64) = 0.
+bl3_full model-only: 5 CRAM bits left, all tied to its R4 / C4 entries (line 2 <- R4 I16 in LAB 30,
+line 3 <- C4 I11 in LAB 31) and their wire drivers: LAB 30 (-18,12) (-17,12), LAB 31 (14,12),
+LAB 30 (19,65) (21,65). Next: force2 with R4/C4 sources to get those codes.

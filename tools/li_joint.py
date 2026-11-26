@@ -37,7 +37,7 @@ def window(rb, x, y):
     return (rb[F0 + FLEN * fr[:, None] + by[None, :]] >> ln[None, :]) & 1
 
 
-dirs = sorted(d for pat in ("rt_[0-9]*", "lb_[0-9]*") for d in glob.glob(R + "/work/" + pat)
+dirs = sorted(d for pat in ("rt_[0-9]*", "lb_[0-9]*", "bv_[0-9]*") for d in glob.glob(R + "/work/" + pat)
               if os.path.exists(d + "/pips.json") and not d.endswith("_9000"))
 TRAIN = int(os.environ.get("TRAIN", str(len(dirs))))
 S_src, S_win, S_dir = [], [], []

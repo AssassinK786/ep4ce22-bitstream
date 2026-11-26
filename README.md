@@ -21,12 +21,12 @@ The EP4CE22 is a different die, so the constants here are new; no code is shared
 | FF and LAB control bits | first pass, consistent across three LABs |
 | LUT-input muxes (local line -> LUT input) | done; one code table per port for all 16 LEs, 99.8 % on held-out specimens |
 | Routing between LABs (R4/C4/R24/C16 -> local lines) | in progress; random and single-net specimens, wire names and delays from `report_timing -show_routing` |
-| Local-line drivers (LE buffer / R4 / C4 / neighbour -> local line) | decoded jointly over all LABs, 99.5 % on held-out specimens |
+| Local-line drivers (LE buffer / R4 / C4 / neighbour -> local line) | structural 2-bit codes per (line, source), read by forcing routes through Quartus `.rcf` files at 3 LABs (60 codes, identical across LABs); statistical model for the rest |
 | FF / LE output select, LE used, comb -> LE buffer | decoded (votes at 3+ LABs) |
 | Clock chain pin R8 -> global -> LAB clock | decoded for the LABs used by the blinky |
 | Pins | settings for every DE0-Nano user pin (8 LEDs, 2 keys, 4 switches, clock) |
 | Periphery block | 6 frames x 298 bytes with frame CRCs, same layout as CRAM; written and checked by `rbf.py` |
-| DE0-Nano blinky from our own tools | a generator-written `.rbf` runs on the board; the model-only version still differs from Quartus in 24 CRAM bits |
+| DE0-Nano blinky from our own tools | **done**: `examples/de0nano_blinky_model_only.rbf` is built from decoded models only (every CRAM and periphery bit), byte-identical to Quartus's build of the same placed design, and runs on the board (24-bit counter, LED0 on A15). Placement and routing choices still come from Quartus reports. A second layout using R4/C4 entries is 5 bits short. |
 | M9K, multipliers, PLL | not started |
 
 Details are in [NOTES.md](NOTES.md). JTAG reports IDCODE 0x020F30DD, shared by the EP3C25, EP4CE22 and 10CL025 (likely one die).
@@ -50,6 +50,7 @@ J=3 N=200 python3 tools/route_fuzz.py # random routing specimens (work/rt_*)
 python3 tools/route_solve.py          # bit <-> routing hop tags; route_holdout.py checks it
 python3 tools/lim_decode.py           # LUT-input mux codes, LAB-relative; lim_holdout.py checks it
 J=3 N=400 python3 tools/route_sparse.py && python3 tools/sparse_solve.py   # single-net specimens
+DESIGN=bl2_full python3 tools/blinky_gen.py   # model-only blinky; openFPGALoader -c usb-blaster <rbf>
 ```
 
 Builds go to `work/` (not tracked). Results are written to `fuzz/*.json`.

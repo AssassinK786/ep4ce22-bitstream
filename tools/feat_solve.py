@@ -9,14 +9,14 @@ R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, R + "/tools")
 exec(open(R + "/tools/li_joint.py").read().split("W = np.stack(S_win)")[0].split('dirs = sorted(')[0])
 AG = float(os.environ.get("AGREE", "0.98"))
-dirs = sorted(d for pat in ("rt_[0-9]*", "lb_[0-9]*") for d in glob.glob(R + "/work/" + pat)
+dirs = sorted(d for pat in ("rt_[0-9]*", "lb_[0-9]*", "bv_[0-9]*") for d in glob.glob(R + "/work/" + pat)
               if os.path.exists(d + "/pips.json") and not d.endswith("_9000"))
 F, Wl = [], []
 for d in dirs:
     feats = collections.defaultdict(set); labs = set()
     for a, b in json.load(open(d + "/pips.json")):
         for node in (a, b):
-            m = re.match(r"(LE_BUFFER|LOCAL_INTERCONNECT|LOCAL_LINE|BLK_CLK_LIM|BLK_CLK_BUF|LAB_CLK)_X(\d+)_Y(\d+)_N0_I(\d+)", node)
+            m = re.match(r"(LE_BUFFER|LOCAL_INTERCONNECT|LOCAL_LINE|BLK_CLK_LIM|BLK_CLK_BUF|LAB_CLK|LAB_CONTROL_MUX)_X(\d+)_Y(\d+)_N0_I(\d+)", node)
             if m:
                 feats[(int(m[2]), int(m[3]))].add(f"{m[1]}_I{m[4]}")
             m = re.match(r"FF_X(\d+)_Y(\d+)_N(\d+)", node)

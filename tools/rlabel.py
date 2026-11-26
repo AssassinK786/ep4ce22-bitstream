@@ -19,7 +19,7 @@ def src_label(node, x, y):
 
 def relbyte(hb, lane, db):
     """Absolute (frame byte, bit) of LAB-relative byte db for a row with high byte hb on bit lane.
-    Rows run downward through frame bytes 295..1 and continue on the next lane when they pass byte 1."""
+    Rows run downward through frame bytes 295..1 and continue on the next lane (byte 295) when they pass byte 1 (295 bytes per lane; fixed 2026-11-26 from 294 with bl3, row Y30)."""
     import os
     period, dl = WRAP
     b = hb - db
@@ -33,5 +33,5 @@ def relbyte(hb, lane, db):
 
 
 import os as _os
-WRAP = tuple(int(v) for v in _os.environ.get("WRAP", "294,1").split(","))
-LO = int(_os.environ.get("WRAPLO", "2"))
+WRAP = tuple(int(v) for v in _os.environ.get("WRAP", "295,1").split(","))
+LO = int(_os.environ.get("WRAPLO", "1"))

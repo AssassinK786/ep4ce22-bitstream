@@ -1,0 +1,281 @@
+[
+{
+"pair": [
+0,
+1,
+15
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+3,
+15
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+3,
+30
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+4,
+1
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+5,
+17
+],
+"legal": true,
+"dest": 0,
+"bits": [
+[
+-18,
+7,
+1
+],
+[
+-18,
+46,
+1
+],
+[
+-17,
+7,
+1
+],
+[
+-1,
+1,
+1
+],
+[
+8,
+0,
+1
+]
+]
+},
+{
+"pair": [
+0,
+7,
+31
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+8,
+3
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+9,
+18
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+11,
+32
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+12,
+5
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+15,
+33
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+16,
+34
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+19,
+10
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+20,
+35
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+22,
+25
+],
+"legal": true,
+"dest": 0,
+"bits": [
+[
+-18,
+46,
+1
+],
+[
+-18,
+50,
+1
+],
+[
+-17,
+51,
+1
+],
+[
+-1,
+1,
+1
+],
+[
+8,
+0,
+1
+]
+]
+},
+{
+"pair": [
+0,
+24,
+36
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+27,
+13
+],
+"legal": true,
+"dest": 0,
+"bits": [
+[
+-18,
+46,
+1
+],
+[
+-1,
+1,
+1
+],
+[
+8,
+0,
+1
+],
+[
+13,
+60,
+1
+],
+[
+14,
+61,
+1
+]
+]
+},
+{
+"pair": [
+0,
+28,
+37
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+28,
+29
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+0,
+30,
+29
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+1,
+30,
+15
+],
+"legal": false,
+"why": "rcf rejected"
+},
+{
+"pair": [
+-1,
+1,
+29
+],
+"legal": false,
+"why": "rcf rejected"
+}
+]

@@ -84,6 +84,14 @@ for a, b in pips:
     if m and b.startswith("LOCAL_LINE"):
         n = int(m[4]) - (1 if m[1] == "FF" else 0)
         local[(int(m[2]), int(m[3]), n)] = "reg" if m[1] == "FF" else "comb"
+FFCLK = {}
+for a, b in pips:
+    m = re.match(r"FF_X(\d+)_Y(\d+)_N(\d+)\.clk$", b)
+    if m:
+        FFCLK[(int(m[1]), int(m[2]), int(m[3]))] = re.sub(r"_X\d+_Y\d+_N0", "", a)
+FFCLK_LAB = collections.defaultdict(set)
+for (x_, y_, n_), s_ in FFCLK.items():
+    FFCLK_LAB[(x_, y_)].add(s_)
 # FF used: (11, b) = 1 per LE with a register (fuzz_vote2.py; positions = old ff_db "(11, b)")
 FFDB_OLD = json.load(open(R + "/fuzz/ff_db.json"))
 ff_to_buf = {re.match(r"FF_X(\d+)_Y(\d+)_N(\d+)$", a).groups() for a, b in pips
@@ -92,7 +100,11 @@ for name, (kind, x, y, n) in place.items():
     if kind == "FF":
         for df, db, dl in FFDB_OLD["le"][f"N{n-1}"]["ff_used"]:
             if df == 11:                       # (11, b): the FF drives the LE_BUFFER (feat analysis, ~96 %)
-                put(absbit(x, y, df, db, dl), 1, "FFUSED")        # (11, b): ~90 % "FF present"
+                # (11, b): clock-pair select. 0 when the FF is clocked straight from BLK_CLK_BUF in a LAB
+                # where some FF uses the LAB_CONTROL_MUX clock; otherwise 1 (training data, ~97 %).
+                srcs_ = FFCLK_LAB.get((x, y), set()); mine = FFCLK.get((x, y, n))
+                v_ = 0 if (mine or "").startswith("BLK_CLK_BUF") and any(t.startswith("LAB_CONTROL_MUX") for t in srcs_) else 1
+                put(absbit(x, y, df, db, dl), v_, "FFUSED")
             if df == 8:
                 pass
 for (x, y, n), src in local.items():
@@ -158,7 +170,7 @@ FEAT, LIJ = opt("feat_bits.json"), opt("li_joint.json")
 labfeat = collections.defaultdict(set); labline = collections.defaultdict(dict)
 for a, b in pips:
     for node in (a, b):
-        m = re.match(r"(LE_BUFFER|LOCAL_INTERCONNECT|LOCAL_LINE|BLK_CLK_LIM|BLK_CLK_BUF|LAB_CLK)_X(\d+)_Y(\d+)_N0_I(\d+)", node)
+        m = re.match(r"(LE_BUFFER|LOCAL_INTERCONNECT|LOCAL_LINE|BLK_CLK_LIM|BLK_CLK_BUF|LAB_CLK|LAB_CONTROL_MUX)_X(\d+)_Y(\d+)_N0_I(\d+)", node)
         if m:
             labfeat[(int(m[2]), int(m[3]))].add(f"{m[1]}_I{m[4]}")
         m = re.match(r"FF_X(\d+)_Y(\d+)_N(\d+)", node)
@@ -171,6 +183,8 @@ for name, (kind, x, y, n) in place.items():          # FFs from the placement to
     if kind == "FF":
         labfeat[(x, y)].add(f"FF_N{n}")
 used_labs = {(v[1], v[2]) for v in place.values()}
+_LIS0 = opt("li_struct.json") or {}
+STRUCT_LINES = {lab: {k for k, s_ in labline[lab].items() if f"{k}|{s_}" in _LIS0} for lab in labline}
 # per LE: (-1, x) = LE used (any output used); (8, a) = combout drives the LE_BUFFER
 c2buf = {(int(m[1]), int(m[2]), int(m[3])) for a, b in pips for m in [re.match(r"LCCOMB_X(\d+)_Y(\d+)_N(\d+)$", a)]
          if m and b.startswith("LE_BUFFER")}
@@ -178,13 +192,14 @@ FM1 = {int(v["feature"][4:]) - 1: int(k.split(",")[1]) for k, v in (FEAT or {}).
        if v["feature"].startswith("FF_N") and k.startswith("-1,")}
 for name, (kind, x, y, n) in place.items():
     if kind == "LCCOMB":
-        put(absbit(x, y, -1, FM1[n]), 1, "LEUSED")
+        put(absbit(x, y, -1, LEOFF[n] + (1 if (n // 2) % 2 == 0 else 0)), 1, "LEUSED")
 # combout -> LE_BUFFER_I<m> (LE n owns buffers n, n+1): bit (8, LEOFF[n] + m - n) = 1 (fuzz_vote3.py)
 for a, b in pips:
     m1 = re.match(r"LCCOMB_X(\d+)_Y(\d+)_N(\d+)$", a); m2 = re.match(r"LE_BUFFER_X(\d+)_Y(\d+)_N0_I(\d+)$", b)
     if m1 and m2:
         x, y, n, m = int(m1[1]), int(m1[2]), int(m1[3]), int(m2[3])
-        put(absbit(x, y, 8, LEOFF[n] + m - n), 1, "C2BUF")
+        off = (m - n) if (n // 2) % 2 else 1 - (m - n)     # even pair members are mirrored (as the LUT slots)
+        put(absbit(x, y, 8, LEOFF[n] + off), 1, "C2BUF")
 for (x, y) in used_labs:
     for key, e in (FEAT or {}).items():
         if e["feature"].startswith("FF_N"):
@@ -198,9 +213,44 @@ for (x, y) in used_labs:
         df, db = map(int, key.split(","))
         if not 0 <= db < 70:
             continue
+        if any(l in STRUCT_LINES.get((x, y), ()) for l in e["lines"]) or df in (-1, 8, 9, 11):
+            continue                                 # element-plane frames belong to the per-LE rules                                 # a structural code exists for that line
         k = "|".join(labline[(x, y)].get(l, "-") for l in e["lines"])
         if k in e["table"]:
             put(absbit(x, y, df, db), e["table"][k], "LI")
+
+# LAB with clocked FFs: (-21, 64) = 0 (1 in an empty device; 0 in 1096/1147 clocked LABs of the training data)
+for (x, y) in {(v[1], v[2]) for v in place.values() if v[0] == "FF"}:
+    put(absbit(x, y, -21, 64), 0, "LABCLK")
+# LAB clock line i: direct FF clocking from BLK_CLK_BUF_I<i> sets (-17, 30+i) without, (-18, 30+i) with the
+# clock also entering a local line (BLK_CLK_LIM_I<i>); neither when no FF is clocked directly.
+for (x, y) in used_labs:
+    for i in range(6):
+        direct = any(s_ == f"BLK_CLK_BUF_I{i}" for (x_, y_, n_), s_ in FFCLK.items() if (x_, y_) == (x, y))
+        lim = f"BLK_CLK_LIM_I{i}" in labfeat[(x, y)]
+        if direct or lim or f"BLK_CLK_BUF_I{i}" in labfeat[(x, y)]:
+            for df, v in ((-17, int(direct and not lim)), (-18, int(direct and lim))):
+                model.pop(absbit(x, y, df, 30 + i), None)
+                put(absbit(x, y, df, 30 + i), v, "LABCLKSEL")
+LIOR = opt("li_or.json")
+for (x, y) in used_labs:
+    for key, Sb in (LIOR or {}).items():
+        df, db = map(int, key.split(","))
+        if not 0 <= db < 70:
+            continue
+        if df in (-1, 8, 9, 11) or any(k in STRUCT_LINES.get((x, y), ()) for k, s in Sb if labline[(x, y)].get(k) == s):
+            continue                                 # the active term is covered by a structural code
+        put(absbit(x, y, df, db), int(any(labline[(x, y)].get(k) == s for k, s in Sb)), "LI-OR")
+
+LIS = opt("li_struct.json")            # structural (line, source) codes from .rcf experiments (li_struct.py)
+GROUP = collections.defaultdict(set)        # line -> every position any known source code of it uses
+for key, bits_ in (LIS or {}).items():
+    GROUP[int(key.split("|")[0])] |= {(df, db) for df, db, v in bits_}
+for (x, y) in used_labs:
+    for k, src_ in labline[(x, y)].items():
+        for df, db, v in (LIS or {}).get(f"{k}|{src_}", []):   # codes may reach into the neighbouring rows
+            model.pop(absbit(x, y, df, db), None)
+            put(absbit(x, y, df, db), v, "LI-S")
 
 # ---- check, assemble, residual
 score = collections.Counter()
