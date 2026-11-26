@@ -10,3 +10,4 @@ tools/crcinit
 fuzz/delta.bin
 fuzz/sparse_pips.json
 fuzz/li_codes.json
+*.bak

@@ -66,6 +66,9 @@ if os.path.exists(R + "/fuzz/tied.json"):
 for key, sets in tied.items():
     if len(sets) >= 3:
         table[key] = [("tied", sorted(set.intersection(*sets)))]
+# vertical link from the LAB below (tools: force3 natural builds vs tied bases, common to 3 LABs)
+if os.path.exists(R + "/fuzz/vbelow_code.json"):
+    table["29|LE_BUFFER@0,-1_I1"] = [("tied-vbelow", sorted(tuple(b) for b in json.load(open(R + "/fuzz/vbelow_code.json"))))]
 out, agree, disagree = {}, 0, 0
 for key, obs in table.items():
     codes = {tuple(map(tuple, b)) for _, b in obs}

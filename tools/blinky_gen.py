@@ -154,8 +154,7 @@ if PINS:
 if CLOCK:
     apply_table(CLOCK["chain"], "CLOCK")
     for (x, y) in {(v[1], v[2]) for v in place.values() if v[0] == "FF"}:
-        for df, db, _dl, val in CLOCK["lab"]:
-            put(absbit(x, y, df, db), val, "CLOCK")
+        # CLOCK["lab"] held (11, -2) = 1: that is N0's clock-pair select, now set by the (11, b) rule
         pass
 TREE = opt(os.environ.get("TREE", "clock_tree.json"))
 if TREE:
@@ -251,6 +250,28 @@ for (x, y) in used_labs:
         for df, db, v in (LIS or {}).get(f"{k}|{src_}", []):   # codes may reach into the neighbouring rows
             model.pop(absbit(x, y, df, db), None)
             put(absbit(x, y, df, db), v, "LI-S")
+
+# inter-LAB wire chains (fuzz/wire_codes.json, tools/force3_probe.py): LE_BUFFER -> wire -> LOCAL_INTERCONNECT
+WIRES = opt("wire_codes.json") or []
+_hop = {}
+for a, b in pips:
+    _hop.setdefault(b, []).append(a)
+def _rel(node, x, y):
+    m = re.match(r"(\w+?)_X(\d+)_Y(\d+)_N0_I(\d+)$", node)
+    return [m[1], int(m[2]) - x, int(m[3]) - y, int(m[4])] if m else None
+for b, srcs_ in _hop.items():
+    m = re.match(r"LOCAL_INTERCONNECT_X(\d+)_Y(\d+)_N0_I\d+$", b)
+    if not m:
+        continue
+    x, y = int(m[1]), int(m[2])
+    for w in srcs_:
+        for d0 in _hop.get(w, []):
+            chain = [_rel(d0, x, y), _rel(w, x, y), _rel(b, x, y)]
+            for e in WIRES:
+                if e["chain"] == chain:
+                    for df, db, v in e["bits"]:
+                        model.pop(absbit(x, y, df, db), None)
+                        put(absbit(x, y, df, db), v, "WIRE")
 
 # ---- check, assemble, residual
 score = collections.Counter()

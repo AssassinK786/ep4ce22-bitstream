@@ -1,0 +1,282 @@
+[
+{
+"name": "A_R4",
+"L": [
+26,
+10
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+0,
+7
+],
+[
+"R4",
+0,
+0,
+16
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+2
+]
+],
+"legal": false
+},
+{
+"name": "A_R4",
+"L": [
+14,
+20
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+0,
+7
+],
+[
+"R4",
+0,
+0,
+16
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+2
+]
+],
+"legal": false
+},
+{
+"name": "A_R4",
+"L": [
+34,
+6
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+0,
+7
+],
+[
+"R4",
+0,
+0,
+16
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+2
+]
+],
+"legal": false
+},
+{
+"name": "B_C4",
+"L": [
+20,
+11
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+-1,
+31
+],
+[
+"C4",
+0,
+0,
+11
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+3
+]
+],
+"legal": true,
+"bits": [],
+"natural": [
+[
+"LE_BUFFER",
+"20",
+"10",
+"31"
+],
+[
+"C4",
+"20",
+"11",
+"11"
+],
+[
+"LOCAL_INTERCONNECT",
+"20",
+"11",
+"3"
+]
+]
+},
+{
+"name": "B_C4",
+"L": [
+30,
+27
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+-1,
+31
+],
+[
+"C4",
+0,
+0,
+11
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+3
+]
+],
+"legal": true,
+"bits": [],
+"natural": [
+[
+"LE_BUFFER",
+"30",
+"26",
+"31"
+],
+[
+"C4",
+"30",
+"27",
+"11"
+],
+[
+"LOCAL_INTERCONNECT",
+"30",
+"27",
+"3"
+]
+]
+},
+{
+"name": "B_C4",
+"L": [
+14,
+19
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+-1,
+31
+],
+[
+"C4",
+0,
+0,
+11
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+3
+]
+],
+"legal": true,
+"bits": [],
+"natural": [
+[
+"LE_BUFFER",
+"14",
+"18",
+"31"
+],
+[
+"C4",
+"14",
+"19",
+"11"
+],
+[
+"LOCAL_INTERCONNECT",
+"14",
+"19",
+"3"
+]
+]
+},
+{
+"name": "B_C4",
+"L": [
+26,
+15
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+-1,
+31
+],
+[
+"C4",
+0,
+0,
+11
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+3
+]
+],
+"legal": true,
+"bits": [],
+"natural": [
+[
+"LE_BUFFER",
+"26",
+"14",
+"31"
+],
+[
+"C4",
+"26",
+"15",
+"11"
+],
+[
+"LOCAL_INTERCONNECT",
+"26",
+"15",
+"3"
+]
+]
+}
+]

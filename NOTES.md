@@ -284,3 +284,87 @@ LUT masks, routing hops) but never its bitstream (that is used only to score the
 bl3_full model-only: 5 CRAM bits left, all tied to its R4 / C4 entries (line 2 <- R4 I16 in LAB 30,
 line 3 <- C4 I11 in LAB 31) and their wire drivers: LAB 30 (-18,12) (-17,12), LAB 31 (14,12),
 LAB 30 (19,65) (21,65). Next: force2 with R4/C4 sources to get those codes.
+
+## Open P&R prototype (tools/pnr/, 2026-11-26)
+Verilog -> bitstream with no Quartus in the flow:
+- `pnr.py`: Yosys generic synth (`synth -flatten; abc -lut 4`) -> pack (DFF joins the LUT on its D,
+  else a route-through LUT) -> annealing placement over a vertical LAB stack -> per-LAB router
+  (backtracking over LUT-input port permutations) -> design directory in the format
+  `tools/blinky_gen.py` reads (extra.qsf placement, LUT masks as .vo defparams, hops as pips.json).
+  The decoded bit models then write the RBF (`DESIGN=<name> TREE=clock_tree_pnr.json blinky_gen.py`;
+  use the `*_model_only.rbf`; its "score" is against an empty-device placeholder and means nothing).
+- Router hop types, each used only when both codes are decoded: own FF -> datac (FF_N{n+1}), LE local
+  line (LOCAL_LINE_I{n/2}), own LE buffer I{n}/I{n+1} -> local interconnect line (li_struct.json),
+  vertical neighbour buffer (down: LE N30 buffer I30 -> line 15; up: LE N0 buffer I1 -> line 29),
+  then the line's LUT-input code (lim_codes_ll.json). Unused LUT ports are made don't-care in the mask.
+- Fixed by what is decoded: LED0 only, from the FF of LE N2 in LAB (38,31) (fuzz/paths.json); clock
+  from R8, every FF on BLK_CLK_BUF_I5; LABs (38,30..32) (`fuzz/clock_tree_pnr.json` = union of the
+  two measured trees, no conflicts on their 9 shared entries).
+- `simcheck.py`: cycle simulation of the emitted LE netlist (masks + routed ports, read back from the
+  design directory) against the counter. `qcheck.py`: compiles the same LE netlist in Quartus with our
+  placement as location assignments and compares every LUT function.
+
+Results:
+- cnt24 (24-bit counter, LED0 = c[23]): 31 LUTs/24 DFFs -> 31 LEs in 3 LABs, 156 hops, every LUT input
+  has a code, 0 model conflicts -> work/pnr_cnt24_model_only.rbf (container checks OK).
+  simcheck: 5000 cycles, 0 mismatches (97 routed inputs). qcheck: Quartus accepts the placement, LUT
+  functions equal 31/31.
+- Model generality check: same placement, Quartus routing, bit models vs Quartus's bitstream: 7 bits differ
+  (2 CLOCK: clock.json "lab" entry (11,-2) lands in the row above, likely the (11,b) register bit of the
+  LAB above, right for bl2's layout only; 5 unmodelled bits at frames 1840/1841/1845, column-edge frames).
+  So pnr_cnt24_model_only.rbf may carry the same 2 CLOCK-bit errors; not board-tested (not loaded).
+- Limits: one decoded link per direction between stacked LABs, tied to LE N30 (down) / N0 (up), so
+  designs with more cross-LAB nets often don't place (burst.v: best cost one violation).
+  Next: inter-LAB R4/C4 codes (tools/routing_model.py), input pins, the other LED paths, clock trees
+  for any LAB, LAB-wide control signals (ena/clr), carry chains.
+
+## Inter-LAB wires and the routing_model API (2026-11-26)
+- tools/force3_probe.py: force any LAB-relative chain [(LE_BUFFER, dx, dy, m), (R4|C4|R24|C16, dx, dy, i), ...,
+  (LOCAL_INTERCONNECT, 0, 0, k)] with an edited .rcf; bits that turn on = the chain's code (wide window).
+  Findings: wires are fixed-wired into lines like LE buffers (C4 I11 at (x, y) reaches ONLY local line 3 of
+  that LAB; all 14 other lines rejected); legality of an R4 index depends on the column (R4 I16 from own I7
+  into line 2 legal at X38 and X30, not at X20/X26/X14/X34/X12) — wire indices are column-phase dependent,
+  so wire codes must be keyed by the wire's own position, not just by the LAB. Partial chains (fitter to
+  complete the rest) are rejected.
+- fuzz/wire_codes.json: chain codes, so far 1: LE_BUFFER I7 -> R4 I16 -> line 2 = (-18,12)+(-17,12)+(14,9)
+  (one LAB only). bl3's C4 chain (LE_BUFFER@0,-1 I31 -> C4 I11 -> line 3) is legal everywhere tried but its
+  code does not show in a forced-vs-natural diff (natural route = forced); needs a base where the line is
+  unused, which the fixed wiring makes hard.
+- tools/routing_model.py — API for tools/pnr/ (keep stable):
+    m = RoutingModel()
+    m.lut(x, y, n, mask) / m.lut_input(dst, src) / m.local_line(x, y, k, src) / m.wire_chain(buf, wire, line)
+    m.hops_to_bits([(a, b), ...]) -> ({(frame, byte, bit): value}, [unknown hops])
+  Names as in Quartus timing/.rcf reports. Positions absolute (tools/rbf.py). Unknown hops are returned,
+  never guessed. Element-plane rules (LE used, output/clock selects, (11,b), frame 8) and the clock tree
+  are still applied by tools/blinky_gen.py.
+  Self-check (python3 tools/routing_model.py <design dir>): bl2_full 1107/1107, bl3_full 1112/1112,
+  bv_00 1105/1105, bv_05 1107/1107 routing bits equal to Quartus; unknown hops = clock tree, clock into a
+  local line, and C4 chains.
+- bl2_full model-only: still byte-identical. bl3_full model-only: 3 CRAM bits left, all from its C4 chain:
+  LAB 31 (14,12) and LAB 30 (19,65) (21,65).
+- Coverage: local lines from own LE_BUFFERs (~20 pairs), left/right neighbour links (~30), vertical links
+  (2), sweep entries for several C4/R4 -> line hops at one LAB, one R4 chain. NOT yet: general LE_BUFFER ->
+  R4/C4/R24/C16 driver codes and wire-to-wire continuations, per wire index and column phase.
+- lfsr (24-bit XNOR LFSR, LED0 = s[23]): 1 LUT + 24 DFFs -> 24 LEs (23 route-through LUTs), 3 LABs,
+  67 hops, 0 conflicts, every input coded -> work/pnr_lfsr_model_only.rbf. simcheck 5000 cycles 0
+  mismatches; qcheck: placement accepted, the real LUT equal 1/1 (Quartus absorbs the 23 route-throughs).
+- burst.v (counter + registered c[23]&c[21]): no legal placement with the decoded vertical links.
+- FF power-up values: registers power up at 0; pnr.py refuses a Verilog initial value of 1
+  (power-up high is not decoded), hence the XNOR LFSR.
+
+## The 5 board-bisected bits (pnr_cnt24, 2026-11-26)
+Board bisection (pnr_cnt24 at LABs (38,30..32), Quartus routing + our models did not run; these 5 bits fixed it):
+- (1840,64,0) (1841,65,0) = LAB 31 (-18,67) + (-17,66): local line 29 driven by the VERTICAL link from the
+  LAB below (LE_BUFFER I1 of (38,30)). li_struct had an EMPTY code for "29|LE_BUFFER@0,-1_I1" (the forced and
+  natural routes were the same, so the force diff showed nothing). Measured against tied bases
+  (force3 natural build vs datab tied to 0, source kept alive by a pin) at (20,10) (30,25) (12,6):
+  common code (-18,67)+(-17,66) -> fuzz/vbelow_code.json, folded into li_struct.
+- (1840,148,0) (1841,149,0) (1845,157,0) = LAB 32 (-18,53) + (-17,52) + (-13,44): the chain own LE_BUFFER I22
+  -> R4 I11 -> local line 35 (driver (-18,53)+(-17,52), line (-16,45)+(-13,44)); force3 at (38,20) (38,10)
+  (30,20) identical -> fuzz/wire_codes.json (applied by blinky_gen; routing_model.wire_chain).
+- The 2 "(11,-2)" clock bits came from a stale clock.json "lab" entry ((11,-2) = 1 is N0's clock-pair select,
+  set properly by the (11, b) rule); removed from blinky_gen.
+Results: pnr_cnt24_q model-only == Quartus (byte-identical); bl2_full still identical; bl3_full 3 bits (C4 chain).
+pnr_cnt24 / pnr_lfsr regenerated with OUR routing (tools/pnr/pnr.py): every local line they use has a 2-bit
+structural code (incl. the vertical-below link, used by both). Lesson: an empty forced-probe code means
+"not measured", not "all zero" — measure such pairs against a tied base.

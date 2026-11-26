@@ -1,0 +1,4 @@
+[
+ {"name": "A_R4", "chain": [["LE_BUFFER",0,0,7],["R4",0,0,16],["LOCAL_INTERCONNECT",0,0,2]], "labs": [[26,10],[14,20],[34,6]]},
+ {"name": "B_C4", "chain": [["LE_BUFFER",0,-1,31],["C4",0,0,11],["LOCAL_INTERCONNECT",0,0,3]], "labs": [[20,11],[30,27],[14,19],[26,15]]}
+]

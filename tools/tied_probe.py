@@ -12,12 +12,17 @@ sys.argv = [sys.argv[0], "0", "0"]
 from force_probe import LEOFF, CB, RW, FF, Q, SLOT, LIM
 EXC = {(SLOT[k][0], LEOFF[n] + ((1 - SLOT[k][1]) if (n // 2) % 2 else SLOT[k][1])) for n in LEOFF for k in SLOT}
 EXC |= {tuple(b) for e in LIM.values() for b in e["bits"]}
-CASES = [((x, y), (x, y + 1, 30), 0) for x, y in ((20, 10), (30, 25), (12, 5))]
+CASES = [((x, y), (x, y + 1, 30), 0) for x, y in ((20, 10), (30, 25), (12, 5))] + [((x, y), (x, y - 1, 0), 0) for x, y in ((20, 10), (30, 25), (12, 6))]
 
 
 def tied(lab, src, d):
     x, y = lab; sx, sy, sn = src
     dX = f"{R}/work/f2_{x}_{y}_{sx}_{sy}_{sn}_d{d}_X"
+    if not os.path.exists(dX + "/top.rcf"):
+        import subprocess as _sp
+        _sp.run([sys.executable, R + "/tools/force2_probe.py", str(x), str(y)], capture_output=True) if False else None
+        from force2_probe import base_for as _bf
+        _bf((sx, sy, sn), d)
     dT = f"{R}/work/tied_{x}_{y}_{sx}_{sy}_{sn}_d{d}"
     os.makedirs(dT, exist_ok=True)
     v = ["module top(input clk, input din, input dt, output y, output yb);", "  wire c, q, w;",

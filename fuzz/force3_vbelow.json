@@ -1,0 +1,113 @@
+[
+{
+"name": "VB_I1_L29",
+"L": [
+20,
+10
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+-1,
+1
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+29
+]
+],
+"legal": true,
+"bits": [],
+"natural": [
+[
+"LE_BUFFER",
+"20",
+"9",
+"1"
+],
+[
+"LOCAL_INTERCONNECT",
+"20",
+"10",
+"29"
+]
+]
+},
+{
+"name": "VB_I1_L29",
+"L": [
+30,
+25
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+-1,
+1
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+29
+]
+],
+"legal": true,
+"bits": [],
+"natural": [
+[
+"LE_BUFFER",
+"30",
+"24",
+"1"
+],
+[
+"LOCAL_INTERCONNECT",
+"30",
+"25",
+"29"
+]
+]
+},
+{
+"name": "VB_I1_L29",
+"L": [
+12,
+6
+],
+"chain": [
+[
+"LE_BUFFER",
+0,
+-1,
+1
+],
+[
+"LOCAL_INTERCONNECT",
+0,
+0,
+29
+]
+],
+"legal": true,
+"bits": [],
+"natural": [
+[
+"LE_BUFFER",
+"12",
+"5",
+"1"
+],
+[
+"LOCAL_INTERCONNECT",
+"12",
+"6",
+"29"
+]
+]
+}
+]
