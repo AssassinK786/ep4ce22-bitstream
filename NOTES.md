@@ -90,3 +90,95 @@ and other regions; decode mux encodings (shared bits = mux select codes) instead
   72-81 % agreement, and the bits that are always set for a C4 source are wire-usage bits at the wire's
   driver (same set for C4..._I19 into I30 or I1). Likely a two-level mux with a first stage shared between
   lines (or between the two LABs of a routing channel); needs a joint model, not per-line consistency.
+
+## DE0-Nano blinky from our tools (2026-11-26) — tools/blinky_design.py, tools/blinky_gen.py
+Design: 26-bit synchronous counter with no carry chain (LUT4 + FF per bit, an enable LUT every
+3 bits; 34 LEs in LABs X38 Y31..33), clock 50 MHz on R8, q[25] -> LED0 (A15), ~1.34 s period.
+Baseline work/bl_empty (M1 -> L3 only). Baseline vs Quartus build of the blinky: 529 CRAM bits
+in 47 frames + 30 periphery bytes (x4).
+Model check against the Quartus build:
+- LUT contents (slot table + column/row model + .vo physical masks): 528 / 528 bits correct.
+- LUT-input muxes (lim_codes.json + STA sources): 956 / 964 correct; 20 inputs fed from
+  LOCAL_LINE (LE feedback) have no code yet.
+- ff_db "ff_used": per-LE (8,a) never flips here and (11,b) flips in 17 / 26 LEs -> these are
+  LE output-select bits (registered/comb to LE_BUFFER / LOCAL_LINE), not "FF used".
+  LAB "ff_clock_on" matches in 2 of 3 LABs -> it encodes the LAB clock-line choice.
+Residual copied as measured from the Quartus build: 199 CRAM bits (153 not modelled: global
+clock spine/row buffers, LAB clock select, LE_BUFFER -> C4 -> IO-block LAB line -> LEIM ->
+IOOBUF A15, LE feedback lines, clearing the baseline's M1 -> L3 path; 46 where the FF model
+above is wrong), and the 120 periphery bytes (IOB standard/enable for A15 and R8).
+Output work/blinky_ours.rbf: byte-identical to Quartus (by construction for the residual).
+Load: openFPGALoader -c usb-blaster work/blinky_ours.rbf (SRAM).
+Open for a model-only blinky: global clock chain bits, output-path bits (LE output select,
+LE_BUFFER -> C4, IO LAB line -> LEIM -> IOOBUF), IOB periphery bytes, LOCAL_LINE codes.
+
+## DE0-Nano blinky generator v2 (2026-11-26) — tools/blinky_gen.py (v1: blinky_gen_v1.py)
+Baseline is now an "empty device": bitwise majority of three trivial pin-to-pin designs
+(work/bl_e1..e3, disjoint pins/paths). Output stays byte-identical to Quartus (residual copied).
+
+| group | source | checked vs Quartus |
+|---|---|---|
+| LUT contents | lut_slots + lab_grid | 544/544 |
+| LUT-input muxes | lim_codes_ll.json (+128 LOCAL_LINE feedback codes, tools/lim_ll.py; slot fallback per port) | 1184/1184 (82 via slot fallback); 0 inputs without code |
+| LE local-output driver select | lab_solve.py on 64 work/lb_* specimens: frame +9, byte LEOFF+1 (even pair member) / +0 (odd); 1 = comb, 0 = reg | 28/28 |
+| Pin I/O (8 LEDs out, KEY0/1 + 4 DIP in) | fuzz_pins.py + pin_solve.py: per pin 0-3 CRAM bits + 5-14 periphery bytes (fuzz/pins.json) | A15 used: ok |
+| A15 output path from (38,31) N3 | fuzz_vote.py three-design vote (A15 vs A13 vs B13): 14 bits + 12 periph bytes (fuzz/paths.json) | 14/14 |
+| R8 clock tree to LABs (38,31..33) | fuzz_vote.py vote (R8 vs E1 vs J15 as clock): 10 bits + 3 periph bytes (fuzz/clock_tree.json) | 8/10 |
+| Clock chain common to 12 LABs | fuzz_clk.py + clk_solve.py: 7 chain bits + 1 LAB-relative bit (fuzz/clock.json) | 10/10 |
+
+Copied as measured: 199 CRAM bits + 30 periphery bytes (v1) -> 107 CRAM bits + 4 periphery bytes (v2).
+Left: ~79 bits inside the three LABs (per-LE FF/LE-buffer bits at frames -1, 8, 11, 13/14 next to each
+LE's byte offset; LAB-level (-12,32) (-11,32) (1,30) (-8,30) (-2,31) (-13,4) (-13,20); inter-LAB
+routing LE_BUFFER -> R4/C4 -> LOCAL_INTERCONNECT drivers), ~26 outside (rest of the clock spine
+and row enables), 2 wrong clock-tree bits, 4 periphery bytes.
+Notes: the old ff_db.json "ff_used" (8,a) bits are not FF-used bits; STA reports list only some
+paths, so labels derived from them (LE-buffer select, FF used) are too incomplete to decode those
+bits — they need labels by construction (vote designs), like the path and clock tables.
+Per-LE / per-LAB "clock region" tables from ck/nc pairs were wrong (62/76): ck and nc also differ
+in routing; the vote method replaced them.
+
+## DE0-Nano blinky, round 3 (2026-11-26): two-LAB layout, votes
+- n flops give at most 2^n states; a visible blink at 50 MHz needs ~24 bits, so one LAB (16 LEs) cannot
+  blink visibly. New layout tools/blinky2_design.py (work/bl2_full): 24-bit counter, LAB A (38,32) bits
+  0..11 + enables, LAB B (38,31) bits 12..23, bit 23 FF at (38,31) N3 -> A15 (decoded path). Only one net
+  (t4) crosses, on a direct link (LE_BUFFER_X38_Y32_I30 -> LOCAL_INTERCONNECT_X38_Y31_I15). LED toggles ~0.17 s.
+- New decoded rules: per-LE register-used bit (11, b) = 1 at the old ff_db "(11, b)" positions
+  (fuzz_vote2.py, common to 3 LABs; 20/22 right on bl2); the old (8, a) "ff_used" bits were wrong.
+  R8 clock tree for LABs (38,31)+(38,32) by vote (R8 vs E1 vs J15): 8 bits + 3 periph bytes, 8/8.
+- Generator: DESIGN=bl2_full TREE=clock_tree2.json python3 tools/blinky_gen.py
+  -> work/bl2_full_ours.rbf (byte-identical, residual copied), work/bl2_full_model_only.rbf.
+- Still copied for bl2: 72 CRAM bits + 4 periphery bytes:
+  * local-line (LAB input) mux drivers: Quartus routes 12 intra-LAB nets through LE_BUFFER -> own LAB
+    LOCAL_INTERCONNECT, plus the t4 direct link. Per-(line, source) majority codes from 650+ specimens are
+    mostly right (8 of 13 hops exact) but not exact; the direct-link code was wrong (9/10 bits). The LAB
+    line mux shares select bits between lines (per-line consistency fails); the pairing is not identified
+    (a "partner line" search was dominated by rare-line artefacts).
+  * per-LE frame -1 bit pairs (one per LE: (-1, 1/2), (-1, 9/10), ...), frame 8 and 13/14 bits — likely
+    LE_BUFFER drive / LAB-line driver side; the FF vote did not isolate them (X/Y chains also route differently).
+  * LAB-level (-12,32) (-11,32) (1,30) (-8,30) (-2,31) (-13,x): LAB clock line select / LAB control.
+  * 17 bits outside the LABs in frames 1837..1843 (left neighbour column: LAB-line / clock spine side).
+  * 4 periphery bytes (logical 296/297/594/595 region: global I/O or clock settings).
+- Next: decode the LAB-line mux jointly (pairs of lines, source per line) with targeted specimens that fix
+  one line's source and vary its partner; then the frame -1/8/13/14 driver bits fall out of the same data.
+
+## Local-line round (2026-11-26)
+- tools/li_joint.py: joint decode of LAB local-line (LOCAL_INTERCONNECT I0..I37) driver bits, LAB-relative,
+  window frames -25..25 (the left column's frames -21..-15 hold line-driver bits too). Per bit: the line (or
+  line pair) whose sources determine it, with a real-dependence test (table takes both values; beats the
+  bit's majority rate by >= 80 % of its error). 145 bits explained; holdout (train 230 specimens, test the
+  rest): 46184 right, 241 wrong, 120 unseen source combos -> 99.48 %. Structure: lines I0..I14 -> frames
+  13..15 (bytes stepping with the line index), I15..I29 -> left-column frames, I30..I37 -> frames -14/-13,
+  I7/I8 also -9..-2 and 11/12. Almost every bit depends on ONE line's source; pairs are rare.
+- tools/feat_solve.py: (-1, x) per LE = "LE used" (any output used), not "FF present" (comb-only LEs that
+  drive outputs set it too); BLK_CLK_LIM_I5 used -> (11,35), (-18,35); BLK_CLK_BUF_I0 -> (18,30), (-17,30).
+- tools/fuzz_vote3.py (comb -> LE_BUFFER vote at 3 LABs): LE n owns LE_BUFFER I<n> and I<n+1>; combout ->
+  buffer I<m> sets (8, LEOFF[n] + m - n). (11, b) is ~90 % "FF present", ~96 % "FF drives the LE_BUFFER";
+  neither is exact.
+- Periphery block = 6 logical frames x 298 bytes with the CRAM frame layout and CRC-16 (logical bytes
+  296/297, 594/595, ... are CRCs). rbf.fix_crcs()/check() now cover them; verified on all 1124 Quartus
+  bitstreams (0 failures; fix_crcs is the identity on Quartus output).
+- bl2_full model-only (work/bl2_full_model_only.rbf): periphery identical; 24 CRAM bits differ from Quartus:
+  LAB 31: (-12,32) (-11,32) (1,30) (-13,45) (8,16) (8,17) (11,6) (11,13) (13,13) (14,12);
+  LAB 32: (-13,4) (13,13) (13,21) (13,44) (14,12); 9 in the left column (frames 1837..1843);
+  i.e. local-line bits whose source combination was never seen in training, the LAB-31 bits tied to the
+  clock entering as data (BLK_CLK_LIM_I5 -> line I8), the (11, b) rule (2 LEs), one (8, .) buffer bit.

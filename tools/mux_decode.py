@@ -31,11 +31,14 @@ KEYS = set(os.environ["KEYS"].split(",")) if os.environ.get("KEYS") else None
 if MODE == "lim":
     EDGE = re.compile(r"^LCCOMB_X(\d+)_Y(\d+)_N(\d+)\.(data[abcd])$")
     key_of = lambda m: f"N{m[3]}.{m[4]}"
+elif MODE == "buf":
+    EDGE = re.compile(r"^LE_BUFFER_X(\d+)_Y(\d+)_N0_I(\d+)$")
+    key_of = lambda m: f"B{m[3]}"
 else:
     EDGE = re.compile(r"^LOCAL_INTERCONNECT_X(\d+)_Y(\d+)_N0_I(\d+)$")
     key_of = lambda m: f"I{m[3]}"
 
-ALL = sorted(d for d in glob.glob(R + "/work/rt_[0-9]*") if os.path.exists(d + "/pips.json") and not d.endswith("rt_9000"))
+ALL = sorted(d for pat in os.environ.get("DIRS", "rt_[0-9]*").split(",") for d in glob.glob(R + "/work/" + pat) if os.path.exists(d + "/pips.json") and not d.endswith("rt_9000"))
 TRAIN = int(os.environ.get("TRAIN", str(len(ALL))))
 OUT = os.environ.get("OUT", R + f"/fuzz/{MODE}_codes.json")
 

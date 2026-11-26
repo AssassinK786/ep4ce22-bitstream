@@ -1,0 +1,562 @@
+{
+ "coords": "(dframe from the column's LUT base, LAB-relative row byte via rlabel.relbyte), lane = row lane",
+ "le": {
+  "N0": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      1
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 13,
+     "reg": 13
+    }
+   },
+   "buf_sel": null,
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 31,
+     "noff": 22
+    }
+   }
+  },
+  "N2": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      2
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 14,
+     "reg": 9
+    }
+   },
+   "buf_sel": {
+    "bits": [],
+    "codes": {
+     "reg": ""
+    },
+    "n": {
+     "reg": 11
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 31,
+     "noff": 22
+    }
+   }
+  },
+  "N4": {
+   "local_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 14,
+     "reg": 9
+    }
+   },
+   "buf_sel": {
+    "bits": [
+     [
+      14,
+      12
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 4,
+     "reg": 6
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 30,
+     "noff": 23
+    }
+   }
+  },
+  "N6": {
+   "local_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 13,
+     "reg": 13
+    }
+   },
+   "buf_sel": null,
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 31,
+     "noff": 22
+    }
+   }
+  },
+  "N8": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      17
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 15,
+     "reg": 6
+    }
+   },
+   "buf_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 5,
+     "reg": 8
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 32,
+     "noff": 21
+    }
+   }
+  },
+  "N10": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      18
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 16,
+     "reg": 8
+    }
+   },
+   "buf_sel": {
+    "bits": [],
+    "codes": {
+     "reg": ""
+    },
+    "n": {
+     "reg": 10
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 30,
+     "noff": 23
+    }
+   }
+  },
+  "N12": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      25
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 13,
+     "reg": 12
+    }
+   },
+   "buf_sel": null,
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 24,
+     "noff": 29
+    }
+   }
+  },
+  "N14": {
+   "local_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 14,
+     "reg": 12
+    }
+   },
+   "buf_sel": {
+    "bits": [
+     [
+      8,
+      27
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 5,
+     "reg": 5
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 33,
+     "noff": 20
+    }
+   }
+  },
+  "N16": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      39
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 17,
+     "reg": 8
+    }
+   },
+   "buf_sel": null,
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 32,
+     "noff": 21
+    }
+   }
+  },
+  "N18": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      40
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 19,
+     "reg": 7
+    }
+   },
+   "buf_sel": null,
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 24,
+     "noff": 29
+    }
+   }
+  },
+  "N20": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      47
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 16,
+     "reg": 11
+    }
+   },
+   "buf_sel": null,
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 31,
+     "noff": 22
+    }
+   }
+  },
+  "N22": {
+   "local_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 18,
+     "reg": 8
+    }
+   },
+   "buf_sel": {
+    "bits": [
+     [
+      -3,
+      53
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 3,
+     "reg": 6
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 28,
+     "noff": 25
+    }
+   }
+  },
+  "N24": {
+   "local_sel": {
+    "bits": [
+     [
+      9,
+      55
+     ]
+    ],
+    "codes": {
+     "comb": "1",
+     "reg": "0"
+    },
+    "n": {
+     "comb": 11,
+     "reg": 13
+    }
+   },
+   "buf_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 3,
+     "reg": 6
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 30,
+     "noff": 23
+    }
+   }
+  },
+  "N26": {
+   "local_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 16,
+     "reg": 12
+    }
+   },
+   "buf_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 5,
+     "reg": 6
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 28,
+     "noff": 25
+    }
+   }
+  },
+  "N28": {
+   "local_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 11,
+     "reg": 12
+    }
+   },
+   "buf_sel": null,
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 28,
+     "noff": 25
+    }
+   }
+  },
+  "N30": {
+   "local_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 14,
+     "reg": 12
+    }
+   },
+   "buf_sel": {
+    "bits": [],
+    "codes": {
+     "comb": "",
+     "reg": ""
+    },
+    "n": {
+     "comb": 4,
+     "reg": 8
+    }
+   },
+   "ff_used": {
+    "bits": [],
+    "codes": {
+     "ff": "",
+     "noff": ""
+    },
+    "n": {
+     "ff": 27,
+     "noff": 26
+    }
+   }
+  }
+ },
+ "lab": {
+  "bits": [],
+  "codes": {
+   "ff": "",
+   "noff": ""
+  },
+  "n": {
+   "ff": 44,
+   "noff": 9
+  }
+ }
+}

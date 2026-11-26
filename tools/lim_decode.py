@@ -24,7 +24,8 @@ EDGE = re.compile(r"^LCCOMB_X(\d+)_Y(\d+)_N(\d+)\.(data[abcd])$")
 from rlabel import src_label, relbyte
 
 
-dirs = sorted(d for d in glob.glob(R + "/work/rt_[0-9]*") if os.path.exists(d + "/pips.json") and not d.endswith("rt_9000"))
+dirs = sorted(d for pat in os.environ.get("DIRS", "rt_[0-9]*").split(",") for d in glob.glob(R + "/work/" + pat)
+              if os.path.exists(d + "/pips.json") and not d.endswith("_9000"))
 if os.environ.get("TRAIN"): dirs = dirs[:int(os.environ["TRAIN"])]
 MINS = int(os.environ.get("MINS", "3")); AGREE = float(os.environ.get("AGREE", "0.9"))
 OUT = os.environ.get("OUT", R + "/fuzz/lim_codes.json")

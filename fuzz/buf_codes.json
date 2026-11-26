@@ -1,0 +1,320 @@
+{
+ "B16": {
+  "bits": [],
+  "codes": {
+   "FF_N17": ""
+  },
+  "samples": 370,
+  "sources": 2
+ },
+ "B7": {
+  "bits": [],
+  "codes": {
+   "FF_N7": ""
+  },
+  "samples": 390,
+  "sources": 2
+ },
+ "B8": {
+  "bits": [],
+  "codes": {
+   "FF_N9": "",
+   "LCCOMB_N8": ""
+  },
+  "samples": 395,
+  "sources": 2
+ },
+ "B30": {
+  "bits": [],
+  "codes": {
+   "LCCOMB_N30": "",
+   "FF_N31": ""
+  },
+  "samples": 375,
+  "sources": 2
+ },
+ "B18": {
+  "bits": [],
+  "codes": {
+   "FF_N19": ""
+  },
+  "samples": 349,
+  "sources": 1
+ },
+ "B22": {
+  "bits": [
+   [
+    -2,
+    5
+   ],
+   [
+    3,
+    64
+   ],
+   [
+    5,
+    49
+   ]
+  ],
+  "codes": {
+   "FF_N23": "001",
+   "LCCOMB_N22": "110"
+  },
+  "samples": 367,
+  "sources": 2
+ },
+ "B19": {
+  "bits": [],
+  "codes": {
+   "FF_N19": ""
+  },
+  "samples": 381,
+  "sources": 2
+ },
+ "B11": {
+  "bits": [],
+  "codes": {
+   "FF_N11": ""
+  },
+  "samples": 372,
+  "sources": 1
+ },
+ "B20": {
+  "bits": [],
+  "codes": {
+   "FF_N21": ""
+  },
+  "samples": 364,
+  "sources": 2
+ },
+ "B28": {
+  "bits": [],
+  "codes": {
+   "FF_N29": ""
+  },
+  "samples": 389,
+  "sources": 2
+ },
+ "B29": {
+  "bits": [],
+  "codes": {
+   "FF_N29": ""
+  },
+  "samples": 363,
+  "sources": 2
+ },
+ "B3": {
+  "bits": [],
+  "codes": {
+   "FF_N3": ""
+  },
+  "samples": 347,
+  "sources": 1
+ },
+ "B5": {
+  "bits": [],
+  "codes": {
+   "FF_N5": ""
+  },
+  "samples": 350,
+  "sources": 2
+ },
+ "B23": {
+  "bits": [],
+  "codes": {
+   "FF_N23": ""
+  },
+  "samples": 430,
+  "sources": 2
+ },
+ "B31": {
+  "bits": [],
+  "codes": {
+   "FF_N31": ""
+  },
+  "samples": 366,
+  "sources": 1
+ },
+ "B1": {
+  "bits": [],
+  "codes": {
+   "FF_N1": ""
+  },
+  "samples": 378,
+  "sources": 2
+ },
+ "B26": {
+  "bits": [],
+  "codes": {
+   "FF_N27": ""
+  },
+  "samples": 315,
+  "sources": 2
+ },
+ "B27": {
+  "bits": [
+   [
+    1,
+    46
+   ]
+  ],
+  "codes": {
+   "LCCOMB_N26": "1",
+   "FF_N27": "0"
+  },
+  "samples": 372,
+  "sources": 2
+ },
+ "B4": {
+  "bits": [
+   [
+    -3,
+    55
+   ],
+   [
+    -3,
+    59
+   ],
+   [
+    -2,
+    13
+   ],
+   [
+    -2,
+    47
+   ],
+   [
+    2,
+    64
+   ],
+   [
+    3,
+    64
+   ],
+   [
+    8,
+    9
+   ],
+   [
+    9,
+    56
+   ]
+  ],
+  "codes": {
+   "FF_N5": "00000000",
+   "LCCOMB_N4": "11111111"
+  },
+  "samples": 399,
+  "sources": 2
+ },
+ "B12": {
+  "bits": [],
+  "codes": {
+   "FF_N13": ""
+  },
+  "samples": 392,
+  "sources": 2
+ },
+ "B6": {
+  "bits": [],
+  "codes": {
+   "FF_N7": ""
+  },
+  "samples": 389,
+  "sources": 1
+ },
+ "B9": {
+  "bits": [],
+  "codes": {
+   "FF_N9": ""
+  },
+  "samples": 342,
+  "sources": 2
+ },
+ "B24": {
+  "bits": [],
+  "codes": {
+   "FF_N25": ""
+  },
+  "samples": 352,
+  "sources": 2
+ },
+ "B15": {
+  "bits": [
+   [
+    8,
+    27
+   ]
+  ],
+  "codes": {
+   "LCCOMB_N14": "1",
+   "FF_N15": "0"
+  },
+  "samples": 353,
+  "sources": 2
+ },
+ "B17": {
+  "bits": [],
+  "codes": {
+   "FF_N17": ""
+  },
+  "samples": 436,
+  "sources": 2
+ },
+ "B21": {
+  "bits": [],
+  "codes": {
+   "FF_N21": ""
+  },
+  "samples": 369,
+  "sources": 1
+ },
+ "B13": {
+  "bits": [],
+  "codes": {
+   "FF_N13": ""
+  },
+  "samples": 371,
+  "sources": 1
+ },
+ "B14": {
+  "bits": [],
+  "codes": {
+   "FF_N15": ""
+  },
+  "samples": 405,
+  "sources": 1
+ },
+ "B25": {
+  "bits": [],
+  "codes": {
+   "FF_N25": ""
+  },
+  "samples": 378,
+  "sources": 2
+ },
+ "B0": {
+  "bits": [],
+  "codes": {
+   "FF_N1": ""
+  },
+  "samples": 382,
+  "sources": 1
+ },
+ "B2": {
+  "bits": [],
+  "codes": {
+   "FF_N3": ""
+  },
+  "samples": 373,
+  "sources": 1
+ },
+ "B10": {
+  "bits": [],
+  "codes": {
+   "FF_N11": ""
+  },
+  "samples": 362,
+  "sources": 1
+ }
+}

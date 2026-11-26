@@ -7,7 +7,8 @@ Layout (718569 bytes, decoded from Quartus 13.1 output; see NOTES.md):
   [33:73)       option header (40 bytes; contains JTAG USERCODE)
   [73:75)       CRC-16 over [33:73), little-endian
   [75:330)      0xFF padding
-  [330:7482)    periphery block, 1788 bytes each repeated 4x
+  [330:7482)    periphery block, 1788 bytes each repeated 4x: 6 logical frames x 298 bytes, same
+                layout as the CRAM frames (lead byte, 295 data bytes, CRC-16 over 1..295, LE)
   [7482:...)    2386 frames x 298 bytes:
                   byte 0      always 0x00 (not in CRC)
                   bytes 1..295 configuration data
@@ -57,9 +58,20 @@ class Rbf:
         assert 1 <= byte <= 295
         self.d[o] = (self.d[o] & ~(1 << bit)) | ((v & 1) << bit)
 
+    def periph(self):
+        return bytes(self.d[PERIPH + 4 * k] for k in range(PERIPH_LEN // 4))
+
+    def set_periph(self, k, v):
+        self.d[PERIPH + 4 * k:PERIPH + 4 * k + 4] = bytes([v]) * 4
+
     def fix_crcs(self):
         c = crc16(self.d[HDR:HDR_END])
         self.d[HDR_END:HDR_END + 2] = c.to_bytes(2, "little")
+        L = self.periph()
+        for f in range(len(L) // FLEN):
+            o = FLEN * f
+            for k, v in zip((o + 296, o + 297), crc16(L[o + 1:o + 296]).to_bytes(2, "little")):
+                self.set_periph(k, v)
         for f in range(NFRAMES):
             o = self.frame_off(f)
             c = crc16(self.d[o + 1:o + 296])
@@ -75,6 +87,11 @@ class Rbf:
                 errs.append(f"frame {f} lead byte")
             if crc16(self.d[o + 1:o + 296]) != int.from_bytes(self.d[o + 296:o + 298], "little"):
                 errs.append(f"frame {f} crc")
+        L = self.periph()
+        for f in range(len(L) // FLEN):
+            o = FLEN * f
+            if crc16(L[o + 1:o + 296]) != int.from_bytes(L[o + 296:o + 298], "little"):
+                errs.append(f"periphery frame {f} crc")
         blk = self.d[PERIPH:PERIPH + PERIPH_LEN]
         if any(blk[i:i + 4] != bytes([blk[i]]) * 4 for i in range(0, len(blk), 4)):
             errs.append("periphery not 4x")

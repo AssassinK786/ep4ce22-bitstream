@@ -21,10 +21,15 @@ The EP4CE22 is a different die, so the constants here are new; no code is shared
 | FF and LAB control bits | first pass, consistent across three LABs |
 | LUT-input muxes (local line -> LUT input) | done; one code table per port for all 16 LEs, 99.8 % on held-out specimens |
 | Routing between LABs (R4/C4/R24/C16 -> local lines) | in progress; random and single-net specimens, wire names and delays from `report_timing -show_routing` |
-| Clock path pin -> global -> LAB clock | in progress (single-net specimens) |
-| I/O, M9K, multipliers, PLL | not started |
+| Local-line drivers (LE buffer / R4 / C4 / neighbour -> local line) | decoded jointly over all LABs, 99.5 % on held-out specimens |
+| FF / LE output select, LE used, comb -> LE buffer | decoded (votes at 3+ LABs) |
+| Clock chain pin R8 -> global -> LAB clock | decoded for the LABs used by the blinky |
+| Pins | settings for every DE0-Nano user pin (8 LEDs, 2 keys, 4 switches, clock) |
+| Periphery block | 6 frames x 298 bytes with frame CRCs, same layout as CRAM; written and checked by `rbf.py` |
+| DE0-Nano blinky from our own tools | a generator-written `.rbf` runs on the board; the model-only version still differs from Quartus in 24 CRAM bits |
+| M9K, multipliers, PLL | not started |
 
-Details are in [NOTES.md](NOTES.md).
+Details are in [NOTES.md](NOTES.md). JTAG reports IDCODE 0x020F30DD, shared by the EP3C25, EP4CE22 and 10CL025 (likely one die).
 
 ## Requirements
 
