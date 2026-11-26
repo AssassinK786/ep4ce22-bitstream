@@ -19,8 +19,10 @@ The EP4CE22 is a different die, so the constants here are new; no code is shared
 | LUT bits, all LAB sites | done; 1539 sites (Quartus caps the EP4CE22 at 1395 LABs) |
 | LUT input order (fitter permutation) | done, via post-fit `.vo` |
 | FF and LAB control bits | first pass, consistent across three LABs |
-| Routing (LAB lines, R4/C4/R24/C16) | next; wire names and delays via `report_path -show_routing` |
-| Clocks, I/O, M9K, multipliers, PLL | not started |
+| LUT-input muxes (local line -> LUT input) | done; one code table per port for all 16 LEs, 99.8 % on held-out specimens |
+| Routing between LABs (R4/C4/R24/C16 -> local lines) | in progress; random and single-net specimens, wire names and delays from `report_timing -show_routing` |
+| Clock path pin -> global -> LAB clock | in progress (single-net specimens) |
+| I/O, M9K, multipliers, PLL | not started |
 
 Details are in [NOTES.md](NOTES.md).
 
@@ -39,6 +41,10 @@ J=4 python3 tools/fuzz_le.py          # LUT geometry over LE slots, columns and 
 HALF=L python3 tools/gridmap.py       # map every LAB site (run with HALF=L and HALF=R)
 J=3 python3 tools/fuzz_ff2.py         # FF / LAB-control bits
 python3 tools/test_roundtrip.py       # patch LUT bits + re-CRC == Quartus output
+J=3 N=200 python3 tools/route_fuzz.py # random routing specimens (work/rt_*)
+python3 tools/route_solve.py          # bit <-> routing hop tags; route_holdout.py checks it
+python3 tools/lim_decode.py           # LUT-input mux codes, LAB-relative; lim_holdout.py checks it
+J=3 N=400 python3 tools/route_sparse.py && python3 tools/sparse_solve.py   # single-net specimens
 ```
 
 Builds go to `work/` (not tracked). Results are written to `fuzz/*.json`.

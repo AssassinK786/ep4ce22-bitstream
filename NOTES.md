@@ -58,3 +58,35 @@ with its delay, e.g. IOIBUF -> CLK_BUFFER -> GEN_CORE_BUF -> R24_X45_Y17 (H_SEG2
 BLOCK_INPUT_MUX (LEIM) -> IOOBUF. Gives wire names (graph) and per-hop delays (timing model).
 Plan: per design, pair consecutive wires (pips) with diff bits; solve bit<->pip by intersecting
 many random-routed designs (Project X-Ray style). Grid: I/O at X53 / Y34 edges.
+
+## Routing, batch 1 (2026-11-25) — tools/route_fuzz.py, route_solve.py, route_holdout.py
+200 specimens: 40 random LUT+FF cells pinned in LABs X19..21 x Y9..11, random 4-input wiring;
+quartus_sta report_timing -show_routing gives ~650 wire hops per specimen (16402 distinct tags).
+14003 CRAM bits vary. Pass 1 (bit pattern == one tag): 2565 unique + 2119 ambiguous.
+Pass 2 (bit == OR of tags, shared mux bits): the remaining 9319, but large covers over-fit.
+Hold-out (solve on 150, predict 50): single-tag bits 99.4 %, 2-4-tag covers 97-98 %,
+9+-tag covers 80 % -> those are not real yet.
+Unique matches by kind: LE_BUFFER->R4 356, LOCAL_INTERCONNECT->datad 319, R4->LI 299, C4->LI 253,
+LE_BUFFER->C4 221, LE_BUFFER->LI 220, LI->datac 216, C4<->R4 ~180 each, LI->datab 146, LI->dataa 65,
+FF->datac 54 (LE feedback), clock spine/LAB clock buffers.
+Next: pool specimens in LAB-relative coordinates (same mux structure in every LAB), more specimens
+and other regions; decode mux encodings (shared bits = mux select codes) instead of OR covers.
+
+## LAB-relative mux decode (2026-11-26) — tools/mux_decode.py (MODE=lim|li), lim_decode.py, lim_holdout.py, rlabel.py
+- Row byte wrap (needed for rows whose LAB runs past the frame start, e.g. Y9): a row runs downward from its
+  high byte through frame bytes 295..2 and continues on lane+1 at byte 295 (period 294, bytes 2..295).
+  rlabel.relbyte(); the earlier window without wrap left N28/N30 undecoded.
+- LUT-input muxes (fuzz/lim_codes.json, 200 specimens, majority rule: sources with >=3 samples, >=90 % agreement):
+  64/64 muxes decoded; bits per mux dataa 10, datab 12, datac 11, datad 12 (N12.datac 19 = 8 spurious).
+  Every source has a distinct code. Hold-out (decode on 150, test 50): 7423/7437 = 99.81 % exact;
+  97 samples from sources never seen in training (mostly LOCAL_LINE_I*_N0 feedback).
+  Code tables are identical in all 16 LE slots for dataa/datab/datad (378/378, 454/454, 320/320) and
+  284/303 for datac (misses from N12's extra bits). Frames: dataa -12,-11,-5..-3; datab -10..-6,-2;
+  datac -12..-9,-3,-1; datad -8..-4,-2. Slot pitch 4 bytes, +8 extra between N14 and N16.
+- Local-line drivers (MODE=li, fuzz/li_codes.json): NOT decoded. 38 lines (I0..I37), 8-23 sources each
+  (C4 196, R4 187, LE_BUFFER 54, BLK_CLK_LIM 5 source labels). Per-source bit consistency fails in windows
+  up to frames -45..45, bytes -80..150 and all 8 lanes: 0-4 bits per line at 90 % agreement; 80-96 % hold-out
+  at looser thresholds with colliding codes. Separating bits sit in the column-edge frames (-17..-13, +18) at
+  72-81 % agreement, and the bits that are always set for a C4 source are wire-usage bits at the wire's
+  driver (same set for C4..._I19 into I30 or I1). Likely a two-level mux with a first stage shared between
+  lines (or between the two LABs of a routing channel); needs a joint model, not per-line consistency.
