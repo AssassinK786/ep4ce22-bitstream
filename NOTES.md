@@ -513,3 +513,13 @@ our own routing clocks every FF from BLK_CLK_BUF).
 - Next: record + force chains for all 16 source slots (each LE has its own two LE_BUFFERs, fixed-wired to
   different C4 wires) at dy = +-1, +-2 for the stack rows; ~16 x 4 chains x 4 rows, with the same
   leave-one-out + natural-build acceptance.
+
+## Slow LFSR demo + --place fix (2026-11-27)
+- pnr.py: a register named in --place is never absorbed into an LED slot (before: the absorption was
+  overridden by --place but still recorded, so LED0 was driven by whatever register landed on its slot).
+- lfsr_slow: prescaler chains a (17 bits, (38,32) N0 -> (38,31) N0) + b (6 bits, (38,31) N4..), tick
+  registered at (38,31) N30 (down link), 7-bit XNOR LFSR (x^7 + x^6 + 1) in (38,30) N0..N12, l[0] at N0
+  (up link) -> inserted LED0 register at (38,31) N2. 3 inter-LAB nets. -> work/pnr_lfsr_slow_open.rbf.
+  simcheck2: fast variant (3 + 2 prescaler bits, same placement) 8000 cycles (~250 LFSR steps) 0 mismatches.
+  Quartus check on its routing of the same placement: 1 bit ((1869,126,0), the (11,b) clock-pair rule
+  under Quartus's own LAB_CONTROL_MUX clocking), same as the board-tested cnt25_led0.
