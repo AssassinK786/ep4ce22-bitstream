@@ -638,3 +638,26 @@ our own routing clocks every FF from BLK_CLK_BUF).
   hops: chain B (31 I17 -> C4 Y27 I18 -> 30 line 2), direct links 30 I1 -> 31 line 29 and 31 I30 -> 30 line 15
   (both board-proven). An unrestricted validated-only build picked 2 unproven chains (31 I2->C4 Y27 I12->line 13,
   30 I14->C4 Y31 I5->line 3) and was discarded. Expected: LED0 starts off, irregular ~6 steps/s, period 127 steps.
+- 2026-11-27 line-11 entry with (-5,-2): LE(0,-1,I2)->C4(0,0,0)->line 11, phase 0 (dest rows %4==0), old method
+  (rows 8,16,28,32), still validated=true. The natiso-core rerun did not accept or replace this chain (no
+  method tag). Code: (-5,-2)+(13,9)+(13,48)+(14,8)+(14,48)+(19,69)+(22,69).
+  Single-chain test work/pnr/ch_up32.v (dest row 32 because of phase 0; source I2 = the LED LE (31 N2) itself):
+  LED reg r31 -> chain -> r32 (32 N30) -> proven down link I30 -> line 15 -> r31; r31 <= ~r32 on every b[8] edge.
+  Prescaler a[13:0] (row 30) -> tick t (30 N0) -> proven up link I1 -> line 29 -> b[8:0] (row 31). The full
+  placement is pinned in work/pnr/place/pnr_chL11.txt, because the annealer did not converge without it.
+  PNR_VALIDATED_ONLY=1 PNR_COLV_ONLY=2,0,11 PNR_NO_IO_RESERVE=1.
+  * work/pnr_chL11_open.rbf (98f06a08) writes all 7 bits.
+  * work/pnr_chL11b_open.rbf (833387fd) is the same with (-5,-2) dropped (emit run with a temporary table edit,
+    restored afterwards).
+  Expected: chain OK -> LED0 starts off, steady ~6 Hz blink (toggles every 2^22 clocks). Chain dead -> LED0
+  goes ON at the first b[8] edge and stays on.
+- 2026-11-27 board: pnr_chL11_open (98f06a08, all 7 bits) PASS and pnr_chL11b_open (833387fd, without (-5,-2))
+  PASS. Both start off, then blink steadily at ~6 Hz. So (-5,-2) is not part of the chain (test-design residue).
+  col_vert_38.json: (-5,-2) removed from LE(0,-1,I2)->C4(0,0,0)->line 11 (phase 0), which is now marked board PASS
+  (backup in scratchpad col_vert_38_before_L11pass.json).
+  (-5,-2) is still in 16 other entries:
+  * Validated (2): LE(0,-1,I4)->C4(0,0,1)->line 3, phase 0 and phase 2, rows 28,32. Same old method, likely the
+    same residue, not yet board-tested.
+  * Unvalidated single-row entries (14), not used by validated-only builds:
+    19/8/12, 2/0/12, 27/10/11, 27/10/0, 17/6/11, 17/6/13, 19/7/3, 17/7/3, 8/14/13, 14/5/1, 21/8/12, 12/15/11,
+    6/14/13, 23/8/12 (buffer/C4/line indices).

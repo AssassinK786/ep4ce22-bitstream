@@ -5317,10 +5317,6 @@
   "x": 38,
   "bits": [
    [
-    -5,
-    -2
-   ],
-   [
     13,
     9
    ],
@@ -5351,7 +5347,8 @@
    28,
    32
   ],
-  "validated": true
+  "validated": true,
+  "board": "PASS 2026-11-27 pnr_chL11_open (98f06a08, 7 bits) + pnr_chL11b_open (833387fd, without (-5,-2)); (-5,-2) removed as residue"
  },
  {
   "chain": [
