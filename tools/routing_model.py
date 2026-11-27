@@ -43,6 +43,8 @@ class RoutingModel:
         self.LIS = _load("li_struct.json") or {}
         self.WIRES = _load("wire_codes.json") or []
         self.HOPS = _load("wire_hops.json") or {}
+        import glob as _g
+        self.COLV = [e for f in _g.glob(os.path.join(R, "fuzz", "col_vert_*.json")) for e in json.load(open(f))]
         self.LUTREL = {(self.SLOT[k][0], LEOFF[n] + ((1 - self.SLOT[k][1]) if (n // 2) % 2 else self.SLOT[k][1]))
                        for n in LEOFF for k in self.SLOT}
 
@@ -86,6 +88,9 @@ class RoutingModel:
         for e in self.WIRES:
             if e["chain"] == chain:
                 return {self.pos(x, y, df, db): v for df, db, v in e["bits"]}
+        for e in self.COLV:                        # column vertical chains (tools/col_vert.py), by row phase
+            if e["x"] == x and e["phase"] in (None, y % 4) and e["chain"] == chain:
+                return {self.pos(x, y, df, db): 1 for df, db in e["bits"]}
         return None
 
     @staticmethod

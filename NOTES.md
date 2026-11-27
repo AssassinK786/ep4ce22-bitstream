@@ -420,3 +420,96 @@ Results (no Quartus in the flow; not board-tested):
 Limits: one fixed slot per pin (all in LAB (38,30)); the bundle always configures all 13 pins (unused LEDs
 are driven by empty slot FFs = 0, i.e. off); +1 cycle on inputs; LED0's path is always emitted by the
 models even if unused; KEY1 (E1) is a clock-capable pin (route starts at CLK_BUFFER) but is used as data.
+
+## Open P&R: power-up high and carry chains (2026-11-26)
+Power-up high (`reg x = 1'b1`):
+- There is no init bit: Quartus reports "NOT Gate Push-Back" and implements x = 1 as a power-up-0 register
+  holding ~x (work/pu_hi: dffeas power_up "low", LUT computes ~x_next, the pin reads it as `.i(!x~q)`).
+- pnr.py push_back(): such registers store ~x; the LUT on D is inverted (or an inverter added), every
+  LUT reading it has that input inverted in its mask, copying registers read through an inverting
+  route-through. An LED driven by it: the register sits at the LED slot and the pin inverts it.
+- Output inversion in the I/O cell: one CRAM bit per LED (io_probe.py --inv / --invmap, three
+  binary-coded builds): fuzz/io_out_invert.json: A15 (1869,295,0) A11 (1974,295,0) B13 (2265,295,0)
+  A13 (2279,295,0), F3 (8,40,1) L3 (8,80,5) B1 (8,198,1) D1 (8,283,2).
+Carry chains (arithmetic mode), from Quartus's own counter masks (work/ar_rtl, ar_rtl2):
+- cin takes datac's place; datad is left unconnected (reads 1); combout = mask[8 + a + 2b + 4cin],
+  cout = mask[a + 2b + 4cin]. Quartus alternates carry polarity along the chain counted from its start
+  (LE i: cout inverted for odd i, cin inverted for even i >= 2), whatever the start position (chains starting
+  at k = 0, 1, 3, 5, 9 all follow it), so there is no position-dependent inversion in the silicon.
+- Chain runs N0 -> N30 in a LAB, then on into N0 of the LAB below (y - 1).
+- CRAM: the only arithmetic bit is (-1, LEOFF[n] + (k even)) = 0 on every LE that takes a carry in (the
+  LUT input-C select: datac vs cin); the chain's first LE keeps 1. Probes ar_a/ar_b/ar_c (WYSIWYG chains,
+  with/without a LAB crossing) and ar_n (same places, normal mode) separate it from routing bits.
+  A chain whose last LE is N30 changes block-level bits (-21, 64/63/56/22/21/14) in the LAB below: pnr
+  never ends a chain at N30.
+- pnr.py: Yosys keeps $alu as ALUKEEP (tools/pnr/alukeep.v), one arithmetic LE per bit (X/CO outputs
+  must be unused); chains are placed first as contiguous runs (fixed members respected: a chain register
+  can be an LED register); dataa/datab routed, cin not; masks from the semantics. PNR_PEEL=1 moves bit 0
+  out of the chain like Quartus. emit.py clears the cin-select bit and picks the measured clock tree for the
+  LAB rows that have registers (an unused LAB's row enable stays off).
+- Quartus check: cnt18 (18-bit counter, pure chain, LED0 = c[17]) with our placement: models + chain bit on
+  Quartus's routing are BYTE-IDENTICAL to Quartus's bitstream (Quartus swaps dataa/datab on its own routing).
+- io_out31 bundle (io_probe.py --out31): LED1..7 at LAB (38,31) N4..N16, next to LED0 (N2), outputs only
+  (111 CRAM + 86 periphery bits); pnr.py --bundle out31.
+- --place file ('reg[bit] x,y,n') fixes registers; a chain follows a fixed member.
+Demos (not board-tested):
+- cnt25 (25-bit counter, LED0..7 = c[17..24]): 25 LEs = one chain (LUT-only flow: 31+ LEs for 24 bits)
+  -> work/pnr_cnt25_open.rbf; simcheck2 0 mismatches. On Quartus's routing: 27 bits differ (Quartus routes
+  the LED pins differently than in the io_out31 measurement).
+- pu_rot (pattern 1010_1010 rotating on LED0..7 every 2^24 clocks ~0.34 s, three-stage 14+5+5 prescaler,
+  four power-up-high registers): -> work/pnr_pu_rot_open.rbf, LED1/3/5/7 pins inverted. Fast variant
+  pu_rot_s (3+2+2 prescaler, same structure) simcheck2: 6000 cycles (~46 rotations) 0 mismatches.
+
+## Fix: pin bundles switched off clock rows (2026-11-26)
+cnt25 (out31 bundle) was dark on the board. The bundles are residuals against the MERGED 3-LAB clock tree,
+so they contained "row enable = 0" for LABs the probe design didn't clock: io_paths_out31 turns off
+(1837,138,0),(1837,145,0) [tree2: LAB (38,32)] and (1837,5,0),(1837,293,1) [tree3: LAB (38,30)];
+io_paths_all turns off the two LAB (38,32) bits. cnt25's chain starts in (38,32) -> no clock there.
+emit.py now never takes clock-tree positions from a bundle (the design's own tree decides). Changed bits:
+cnt25 2, pu_rot 4; sw_led and key_toggle (LABs 30/31 only, board-tested) byte-identical to before.
+Still suspect in io_paths_out31: 4 entries at frames -18/-17 in LAB (38,31) block rows 8/12/13 are
+local-line driver positions, probably corrections for the probe's own toggle ring rather than pin bits.
+cnt25_led0 (two chains 17 + 8 bits, LED0 = bit 24 via the LED0 path, no bundle): Quartus check on its
+routing = 1 bit off ((1869,126,0), the (11,b) clock-pair rule for Quartus's LAB_CONTROL_MUX clocking;
+our own routing clocks every FF from BLK_CLK_BUF).
+
+## Column-38 vertical chains (2026-11-26) — structure found, codes not yet exact
+- tools/col_vert.py record: 108 natural single-net designs in column 38 (source 1..4 rows above/below
+  rows 26..33, source LEs N2/N30): 101 use exactly LE_BUFFER -> C4 -> LOCAL_INTERCONNECT, 7 the direct
+  vertical links. 38 distinct dest-relative chains; some appear at all 8 rows (phase-free), most at 2.
+- Code measurement attempts:
+  1. forced build vs a base without the source: 20-29 noisy bits (the source's pin input route differs
+     per compile) — unusable;
+  2. two re-fits of one compile with an alternative chain: no legal same-source alternative exists
+     (each buffer/C4 is fixed-wired, other buffers belong to other LEs);
+  3. (current) forced_iso: the source also drives a dummy LUT in its own LAB; variant = re-fit with the
+     chain + dummy branch, base = same design with the dest input tied off, re-fitted with the SAME .rcf
+     for every net. Per row 10-29 bits; intersection over rows gives cores such as C4 -> line 0 =
+     (13,1)+(15,1), C4 driver bits at the source row (frames 19/22, db -280 = 4 rows up, -210 = 3 rows),
+     plus (19,-2)/(21,-1) in almost every chain (a base artefact, not the chain).
+     Leave-one-out over 27 chains with >= 4 rows: the training core is contained in the held-out row's
+     diff in 114/133 cases (86 %); not exact, so no entry was accepted (fuzz/col_vert_38.json empty).
+- Likely remaining noise: tying the dest input to 1'b0 lets Quartus simplify the dest LUT and its input
+  muxes; next try a base where ld.datab is driven by another existing local signal (same LUT mask), and
+  subtract the constant (19,-2)/(21,-1) artefact explicitly.
+- Integration is ready: blinky_gen applies col_vert entries (COLV, chain + row phase), pnr.py expands them
+  into CHAINS/REACH. lfsr_slow does not place/route yet (no accepted entries).
+- 2026-11-26 later: accepted 12 column-38 chains into fuzz/col_vert_38.json: consistent in every
+  leave-one-out fold after removing the constant base artefact (19,-2)/(21,-1) (115/133 folds contain the
+  core; 12/27 chains pass all folds) AND every core bit is set in each natural Quartus build that used
+  that chain (42 builds). Source offsets covered: dy = -1 (phases 0, 2), -2 (phase 3), -3, -4, +3, +4
+  (phase-free). routing_model.wire_chain also serves these.
+- lfsr_slow still has no routable placement in (38,30..32): the stack needs sources 1-2 rows ABOVE
+  (only +3/+4 decoded) and the -1/-2 chains exist only for some row phases; widening the stack needs the
+  clock tree of more rows (only (38,30..32) measured).
+- 2026-11-26, more chains + clock trees: +2 accepted chains (source 1 row above, any phase; 2 rows above,
+  phase 3) -> 14 in fuzz/col_vert_38.json, covering source offsets -4..+4 (some phase-limited).
+  Clock trees: a union of single-FF per-row votes does NOT reproduce the measured stack tree (single-FF votes
+  pick up output-path bits); pair-set votes do (as clock_tree_pnr.json was built). New:
+  fuzz/clock_tree_38_29_30.json (pair vote, tools/clk_rows.py set) and fuzz/clock_tree_stack_29_31.json
+  (= pair (29,30) + pair (30,31)). Stack (38,29..31) has only one undecoded LAB pair; lfsr_slow places
+  there with cost 530 but is rejected: every decoded C4 chain starts at LE N2 or N30 (the recording used
+  only those source slots), so only ~4 of 16 LEs per LAB can drive another LAB. lfsr_slow needs more.
+- Next: record + force chains for all 16 source slots (each LE has its own two LE_BUFFERs, fixed-wired to
+  different C4 wires) at dy = +-1, +-2 for the stack rows; ~16 x 4 chains x 4 rows, with the same
+  leave-one-out + natural-build acceptance.

@@ -305,7 +305,7 @@ for b in list(_into):
         if mm[1] == "LE_BUFFER":
             break
     for e in COLV:
-        if e["x"] == x and e["phase"] == y % 4 and e["chain"] == chain:
+        if e["x"] == x and e["phase"] in (None, y % 4) and e["chain"] == chain:
             for df, db in e["bits"]:
                 model.pop(absbit(x, y, df, db), None)
                 put(absbit(x, y, df, db), 1, "COLV")

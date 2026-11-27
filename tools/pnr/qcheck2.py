@@ -14,6 +14,7 @@ name = sys.argv[1]
 d = f"{R}/work/{name}"; q = f"{R}/work/{name}_q"
 os.makedirs(q, exist_ok=True)
 info = json.load(open(d + "/pnr.json"))
+pnr.load_bundle(info.get("bundle", "all"))
 pips = json.load(open(d + "/pips.json"))
 back = {b: a for a, b in pips}
 masks = {int(m[1]): int(m[2], 16) for m in re.finditer(r"defparam \\le(\d+) \.lut_mask = 16'h([0-9A-F]+);", open(d + "/simulation/modelsim/top.vo").read())}
@@ -42,11 +43,21 @@ for pin in outs:
 v = ["module top(input clk" + "".join(f", input pin_{p}" for p in ins) + "".join(f", output o_{p}" for p in outs) + ");"]
 qsf = ["set_location_assignment PIN_R8 -to clk"] + [f"set_location_assignment PIN_{p} -to pin_{p}" for p in ins] + \
       [f"set_location_assignment PIN_{p} -to o_{p}" for p in outs]
+prev_c = {b: a for ch in info.get("chains", []) for a, b in zip(ch, ch[1:])}
+has_next = {a for ch in info.get("chains", []) for a in ch[:-1]}
 for i, e in les.items():
     x, y, n = pos[i]
-    cs = ",".join(f".{p}({conn.get((i, p), '1' + chr(39) + 'b1')})" for p in pnr.PORTS)
+    if i in prev_c:            # carry-in LE: datac is cin, datad unconnected (vcc)
+        cs = ",".join(f".{p}({conn.get((i, p), '1' + chr(39) + 'b1')})" for p in ("dataa", "datab", "datad")) + f",.cin(co{prev_c[i]})"
+        slc = "cin"
+    else:
+        cs = ",".join(f".{p}({conn.get((i, p), '1' + chr(39) + 'b1')})" for p in pnr.PORTS)
+        slc = "datac"
+    if i in has_next:
+        cs += f",.cout(co{i})"
+        v.append(f"  wire co{i};")
     v.append(f"  wire w{i}, q{i};")
-    v.append(f"  cycloneive_lcell_comb #(.lut_mask(16'h{masks[i]:04X}),.sum_lutc_input(\"datac\")) le{i} ({cs},.combout(w{i}));")
+    v.append(f"  cycloneive_lcell_comb #(.lut_mask(16'h{masks[i]:04X}),.sum_lutc_input(\"{slc}\")) le{i} ({cs},.combout(w{i}));")
     qsf.append(f"set_location_assignment LCCOMB_X{x}_Y{y}_N{n} -to le{i}")
     if e["ff"]:
         v.append(f"  dffeas r{i} (.clk(clk),.d(w{i}),.ena(1'b1),.clrn(1'b1),.prn(1'b1),.sclr(1'b0),.sload(1'b0),.asdata(1'b0),.q(q{i}));")

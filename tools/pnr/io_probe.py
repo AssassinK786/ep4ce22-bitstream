@@ -131,7 +131,8 @@ def main():
 
 
 
-def design_all(name="io_all"):
+def design_all(name="io_all", invert_outputs=False):
+    inv = (lambda p_: invert_outputs(p_)) if callable(invert_outputs) else (lambda p_: invert_outputs)
     """All 6 inputs and 8 LEDs at their slots in one design, so Quartus picks non-colliding pin routes.
     Inputs: slot LE = pin ^ own FF; XOR tree in LAB (38,30) ending at LE N0 (vertical link up to LAB 31);
     LED0 FF (38,31) N3 = q0 ^ tree. Outputs: ring of toggles in LAB (38,32), slot k: qk ^ q(k+1)."""
@@ -152,14 +153,15 @@ def design_all(name="io_all"):
     v += ["  wire x1, x2, w0, q0;",
           lut("lx1", xor_mask(4), *(f"q_{p}" for p in ins[:4]), "x1"),
           lut("lx2", xor_mask(3), "x1", f"q_{ins[4]}", f"q_{ins[5]}", one, "x2"),
-          lut("l0", 0x5A5A, "x2", one, "q0", one, "w0"), ff("r0", "w0", "q0"), "  assign led = q0;"]
+          lut("l0", 0x5A5A, "x2", one, "q0", one, "w0"), ff("r0", "w0", "q0"),
+          "  assign led = " + ("~q0;" if inv("A15") else "q0;")]
     q += ["set_location_assignment LCCOMB_X38_Y30_N28 -to lx1", "set_location_assignment LCCOMB_X38_Y30_N0 -to lx2",
           "set_location_assignment LCCOMB_X38_Y31_N2 -to l0", "set_location_assignment FF_X38_Y31_N3 -to r0"]
     for k, p in enumerate(outs):
         x, y, n = OUTPUTS[p]
         nxt = outs[(k + 1) % len(outs)]
         v += [f"  wire w_{p}, q_{p};", lut(f"ls_{p}", 0x5A5A, f"q_{nxt}", one, f"q_{p}", one, f"w_{p}"),
-              ff(f"rs_{p}", f"w_{p}", f"q_{p}"), f"  assign o_{p} = q_{p};"]
+              ff(f"rs_{p}", f"w_{p}", f"q_{p}"), f"  assign o_{p} = " + ("~" if inv(p) else "") + f"q_{p};"]
         q += [f"set_location_assignment PIN_{p} -to o_{p}", f"set_location_assignment LCCOMB_X{x}_Y{y}_N{n} -to ls_{p}",
               f"set_location_assignment FF_X{x}_Y{y}_N{n+1} -to rs_{p}"]
     v.append("endmodule")
@@ -188,5 +190,78 @@ def main_all():
     print(f"io_all: {sum(1 for e in res if e[0]=='cram')} CRAM + {sum(1 for e in res if e[0]=='pbit')} periphery bits; routes {routes}")
 
 
+def main_inv():
+    """Output inversion in the I/O cell: io_all with every LED driven inverted, diffed against io_all."""
+    d = design_all("io_all_inv", invert_outputs=True)
+    build(d)
+    vo = open(d + "/simulation/modelsim/top.vo").read()
+    print("inverted at the pin in Quartus's netlist:", len(re.findall(r"\.i\(!", vo)), "outputs")
+    a = {tuple(e[:-1]): e[-1] for e in residual("io_all")}
+    b = {tuple(e[:-1]): e[-1] for e in residual("io_all_inv")}
+    diff = [list(k) + [b.get(k, None), a.get(k, None)] for k in set(a) | set(b) if a.get(k) != b.get(k)]
+    json.dump(diff, open(R + "/fuzz/io_inv_diff.json", "w"))
+    print(f"io_all_inv vs io_all: {len(diff)} bits differ:", sorted(diff)[:40])
+
+
+
+def main_invmap():
+    """which inversion bit belongs to which LED: 3 builds, build k inverts the LEDs whose index has bit k"""
+    leds = ["A15"] + list(OUTPUTS)
+    a = {tuple(e[:-1]): e[-1] for e in residual("io_all")}
+    seen = {}
+    for k in range(3):
+        sel = {p for i, p in enumerate(leds) if (i >> k) & 1}
+        nm = f"io_all_inv{k}"
+        build(design_all(nm, invert_outputs=lambda p_, sel=sel: p_ in sel))
+        b = {tuple(e[:-1]): e[-1] for e in residual(nm)}
+        for key in set(a) | set(b):
+            if a.get(key) != b.get(key):
+                seen.setdefault(key, 0)
+                seen[key] |= 1 << k
+    allinv = {tuple(e[:5]) for e in json.load(open(R + "/fuzz/io_inv_diff.json"))}
+    table = {}
+    for key in allinv:
+        idx = seen.get(key[:4], 0)
+        table[leds[idx]] = list(key[:4]) + [1]
+    json.dump(table, open(R + "/fuzz/io_out_invert.json", "w"), indent=0)
+    print("output inversion bit per LED:", table, "| codes seen:", sorted(seen.values()))
+
+
+
+OUT31 = {"A13": (38, 31, 4), "B13": (38, 31, 6), "A11": (38, 31, 8), "D1": (38, 31, 10),
+         "F3": (38, 31, 12), "B1": (38, 31, 14), "L3": (38, 31, 16)}
+
+
+def main_out31():
+    """Outputs-only bundle: LED1..7 at LAB (38,31) N4..N16, next to LED0 (N2), so a carry chain running
+    from (38,32) N0 into (38,31) can drive all eight LEDs straight from its registers."""
+    one = "1'b1"
+    ff = lambda r, d_, q_: (f"  dffeas {r} (.clk(clk),.d({d_}),.ena({one}),.clrn({one}),.prn({one}),"
+                            f".sclr(1'b0),.sload(1'b0),.asdata(1'b0),.q({q_}));")
+    outs = list(OUT31)
+    v = ["module top(input clk, " + ", ".join(f"output o_{p}" for p in outs) + ", output led);", "  wire w0, q0;"]
+    q = ["set_location_assignment PIN_R8 -to clk", "set_location_assignment PIN_A15 -to led",
+         "set_location_assignment LCCOMB_X38_Y31_N2 -to l0", "set_location_assignment FF_X38_Y31_N3 -to r0"]
+    v.append(f"  cycloneive_lcell_comb #(.lut_mask(16'h5A5A)) l0 (.dataa(q_{outs[0]}),.datab({one}),.datac(q0),.datad({one}),.combout(w0));")
+    v += [ff("r0", "w0", "q0"), "  assign led = q0;"]
+    for k, p in enumerate(outs):
+        x, y, n = OUT31[p]
+        nxt = outs[(k + 1) % len(outs)]
+        v += [f"  wire w_{p}, q_{p};",
+              f"  cycloneive_lcell_comb #(.lut_mask(16'h5A5A)) ls_{p} (.dataa(q_{nxt}),.datab({one}),.datac(q_{p}),.datad({one}),.combout(w_{p}));",
+              ff(f"rs_{p}", f"w_{p}", f"q_{p}"), f"  assign o_{p} = q_{p};"]
+        q += [f"set_location_assignment PIN_{p} -to o_{p}", f"set_location_assignment LCCOMB_X{x}_Y{y}_N{n} -to ls_{p}",
+              f"set_location_assignment FF_X{x}_Y{y}_N{n+1} -to rs_{p}"]
+    v.append("endmodule")
+    d = f"{R}/work/io_out31"
+    os.makedirs(d, exist_ok=True)
+    open(d + "/top.v", "w").write("\n".join(v) + "\n"); open(d + "/extra.qsf", "w").write("\n".join(q) + "\n")
+    build(d)
+    res = residual("io_out31")
+    json.dump({"inputs": {}, "outputs": OUT31, "bits": res, "routes": {}}, open(R + "/fuzz/io_paths_out31.json", "w"), indent=0)
+    print(f"io_out31: {sum(1 for e in res if e[0]=='cram')} CRAM + {sum(1 for e in res if e[0]=='pbit')} periphery bits")
+
+
 if __name__ == "__main__":
-    main_all() if sys.argv[1:2] == ["--all"] else main()
+    {"--all": main_all, "--inv": main_inv, "--invmap": main_invmap, "--out31": main_out31}.get(sys.argv[1] if sys.argv[1:] else "", main)()
+
