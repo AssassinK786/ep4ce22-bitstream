@@ -523,3 +523,118 @@ our own routing clocks every FF from BLK_CLK_BUF).
   simcheck2: fast variant (3 + 2 prescaler bits, same placement) 8000 cycles (~250 LFSR steps) 0 mismatches.
   Quartus check on its routing of the same placement: 1 bit ((1869,126,0), the (11,b) clock-pair rule
   under Quartus's own LAB_CONTROL_MUX clocking), same as the board-tested cnt25_led0.
+- 2026-11-27 board: pnr_lfsr_slow_model_only.rbf (sha 18e5f4ad, first natiso pass, single-row C4 codes) ->
+  LED0 steady ON. It used 3 UNVALIDATED C4 chains (29->30 C4 I3 -> line 6 @31? / 30->31 C4 I11 -> line 3 /
+  31->29 C4 I12 -> line 13). Also found: natiso_accept had replaced 4 validated entries by single-row ones
+  (fixed: validated entries win). New switch PNR_VALIDATED_ONLY=1 (pnr.py and blinky_gen.py) skips
+  unvalidated col_vert entries. Bisection build: work/pnr_lfsr_slow_v_model_only.rbf (sha af240a0b) =
+  lfsr_slow on (38,29..31) with validated hops only (C4 chain 29->31 = LE0m22_C40m10_LO0012, phase 3, plus
+  the direct link 30->29 line 15). cnt24 on (38,29..31) does not route with validated hops only.
+- Board: pnr_lfsr_slow_v (af240a0b, validated hops only) -> LED0 steady ON too. LED should start OFF
+  (l[0] = 0 at power-up), so ON = stuck at 1 / wrong output value, not merely "not stepping".
+  Bisection builds (validated hops only):
+  * work/pnr_lfsr_slow_30_model_only.rbf (sha 20a24c07): lfsr_slow on the board-proven (38,30..32) tree
+    (clock_tree_pnr.json); inter-LAB: direct links 30<->31 and the C4 chain 31 -> 30 (source 1 row above).
+  * work/pnr_row29_model_only.rbf (sha 8052407a): work/pnr/row29.v, 23-bit prescaler in rows 30/31, its MSB
+    sampled by ONE FF in row 29, re-registered at LED0; uses exactly the two inter-LAB hops of the failing
+    validated build (direct 30 -> 29 line 15, C4 29 -> 31) and the (38,29..31) stack tree.
+- 2026-11-27 ROOT CAUSE of all three lfsr_slow / row29 board failures: I delivered work/*_model_only.rbf
+  (blinky_gen output). The carry-in bits (LUT input C on cin, one per carry-chain LE) are added only by
+  tools/pnr/emit.py -> work/NAME_open.rbf. Every prescaler is a carry chain, so none counted.
+  Board-proven cnt25_led0 was the _open file (it differs from its _model_only by 25 bytes).
+  Regression check: old pnr_cnt25_led0 directory through the CURRENT emit/tables -> byte-identical to the
+  board-proven rbf (tables/merge did not regress). Re-emitted (_open vs _model_only = carry bits only, 23-24 B):
+  pnr_lfsr_slow_30_open.rbf (62d760fa), pnr_row29_open.rbf (e99caa3f, TREE=clock_tree_stack_29_31.json),
+  pnr_lfsr_slow_v_open.rbf (742c1b93, same TREE). Rule: always ship NAME_open.rbf from emit.py; for
+  stacks other than 30..32 pass TREE explicitly (emit's default is clock_tree_pnr.json).
+- 2026-11-27 board (_open builds): pnr_row29_open (e99caa3f) blinks ~6 Hz = PASS (row-29 clock tree
+  clock_tree_stack_29_31, C4 chain LE(0,2,31)->C4(0,-2,23)->line 6 phase 3, direct link 30->29 line 15 all
+  board-proven). pnr_lfsr_slow_v_open (742c1b93, rows 29..31) switches irregularly ~6/s = PASS: lfsr_slow
+  works through the fully open flow. pnr_lfsr_slow_30_open (62d760fa, rows 30..32) LED0 steady ON = FAIL.
+- Build-1 failure: its only C4 hop is 31->30 = LE_BUFFER(0,+1,I2) -> C4(0,-3,12) -> line 13 (src N0-ish
+  buffer I2 of (38,31), C4_X38_Y27_I12, LOCAL_INTERCONNECT_X38_Y30_I13). Its "validated" col_vert entry had
+  bits = [] (EMPTY core): it passed leave-one-out + natural-superset trivially, so nothing was emitted ->
+  no route on silicon. BOARD-SUSPECT. Three validated entries had empty cores; all now validated False +
+  "suspect" (backup scratchpad col_vert_38_before_suspect.json); natiso_accept no longer validates an
+  empty code. natiso measurements of that chain: dest 30 (phase 2) 10 bits + artefact
+  [(-16,20)(-15,21)(0,-290)(13,60)(14,60)(15,-300)(19,-282)(19,-70)(22,-282)(22,-70)], dest 33 and dest 26
+  differ (block-relative positions change with the row) -> not phase-free, not validated.
+- 2026-11-27 rows 25..28 natiso pass finished (256 results). Acceptance: 209 chains, 0 validated, 174 disagree
+  across rows. Even grouped by (chain, dest row phase): 0 agree, 223 disagree, 50 single -> per-row natiso
+  codes are NOT reproducible between rows 4 apart (block-relative bit positions shift with the dest row, or
+  the base still carries per-compile noise). col_vert_38.json: 180 entries, 11 validated (the 14 minus the 3
+  empty-core suspects), +35 single-row unvalidated. Suspect chain LE(0,1,I2)->C4(0,-3,12)->line 13:
+  measured codes at dests 26/30/33 are all non-empty and all different -> contradicts the empty
+  "validated" entry; no confirmed code yet.
+
+## Why natiso codes didn't repeat across rows — diagnosed + fixed (2026-11-27)
+- Compile noise: NONE. Re-ran specimens (31->32 sn0, 30->31 sn2) with SEED 2 and 3 (col_vert.py natiso with
+  CVN_TAG/QSEED env, test-only hooks): codes byte-identical to the default-seed runs. Codes are deterministic.
+- Row normalisation (relbyte/LIN vs lab_grid.json): correct. Known-truth check: direct link LE(0,-1,1) ->
+  line 29 yields exactly (-18,67)+(-17,66) at all 8 dest rows 25..32, across lane boundaries and phases.
+- Cause: the codes carry deterministic DESIGN artefacts of the tie-off base that move with the dest row:
+  (a) top-periphery output-pin routes (y->A15, z->B13): absolute lin < 24 (above row 33), e.g. (0,14) in
+  400/496 results — in dest-relative coordinates they shift by 70 per row; (b) dest-side reshuffles (the dt
+  input lands on another local line, LUT input-mux bits (-5..-8,-2)), different per row; (c) (19,-2)/(21,-1).
+  Identity-across-rows acceptance therefore validated nothing. A per-row frequency filter over-strips (it
+  removed the true (-17,66) at yd 32) — rejected.
+- Fix (tools/natiso_accept.py rewritten): core = intersection over >= 3 dest rows of the cleaned codes
+  (minus top periphery and (19,-2)/(21,-1)), leave-one-out (core of any n-1 rows == core), guard (no core
+  bit in >= 40 % of all results at each of its rows), non-empty. Accepted entries: phase None,
+  method "natiso-core" (all span >= 2 row phases).
+- Result on existing rows 25..32 data (496 results, 209 chains, no new Quartus runs except the 4 seed
+  builds): 38 accepted (166 have < 3 rows, 5 fail leave-one-out). col_vert_38.json: 214 entries, 48
+  validated (38 natiso-core + 10 earlier). Cross-checks: the one earlier forced-build entry that overlaps
+  (LE(0,-2,2)->C4(0,-1,0)->line 12) is identical; the board-suspect 31->30 chain LE(0,1,2)->C4(0,-3,12)->
+  line 13 now has a 4-bit code (13,60)+(14,60)+(19,-70)+(22,-70) at rows 25/28/29/32 (was EMPTY).
+  Note: the old validated LE(0,-1,2)->C4(0,0,0)->line 11 (phase 0) contains (-5,-2), a type-(b) artefact.
+  Backups: scratchpad col_vert_38_before_core.json, natiso_accept.py.bak, col_vert.py.bak.
+- Rebuild: work/pnr_lfsr_slow_30b_open.rbf (sha 8aab0d8be0e4e892), PNR_VALIDATED_ONLY=1, (38,30..32),
+  clock_tree_pnr.json. The router did not use the 31->30 I12 chain; it uses 4 natiso-core chains (none
+  board-proven): 31->30 LE I14->C4 Y27 I16->line 10 and LE I17->C4 Y27 I18->line 2; 30->31 LE I12->C4 Y31
+  I4->line 1 and LE I19->C4 Y31 I8->line 4. 15 COLV bits emitted (= 3+4+4+4), lut_inputs_without_code 0.
+- 2026-11-27 board: pnr_lfsr_slow_30b_open (8aab0d8b) LED0 steady ON = FAIL; its 4 natiso-core chains board-suspect.
+  Checks:
+  * Clock tree: all 13 clock_tree_pnr positions and all periphery bytes identical to board-proven
+    pnr_cnt24_model_only.rbf -> not the clock.
+  * 1->0 bits: for chains A-D and S, no consistent bit that the natural build clears vs the base
+    (natiso only records 0->1; nothing missed on that side).
+  * Structure vs S = (13,60)+(14,60) line select + (19,-70)+(22,-70) source driver: B (13,9)+(15,8) +
+    (19,-29)+(21,-29), C (13,5)+(14,4) + (19,89)+(21,89), D (13,17)+(14,16) + (19,118)+(21,119): complete,
+    no test-design residue. A (LE(0,1,I14)->C4(0,-3,16)->line 10) had ONE line bit (14,44): its second bit
+    alternates with dest-row parity, (13,44) at odd rows, (13,45) at even rows; the intersection silently
+    dropped it. Build 30b's A hop lands in row 30 (even) -> (13,45) missing -> line 10 half-selected.
+  * natiso_accept fix: every row's leftover bits in the chain area (frames 12..22, |db| <= 400) must be a
+    common artefact (>= 25 % of that row's results), else the chain is split by dest-row parity (each half
+    >= 2 rows, stored as phase entries, method natiso-core-parity). Rerun: 52 phase-free + 6 parity-split
+    chains; col_vert_38.json 228 entries, 62 validated. A now: even rows (13,45)+(14,44), odd rows
+    (13,44)+(14,44), + (19,-47)+(21,-47).
+  * pnr.py: PNR_COLV_ONLY="buf,c4,line" restricts column chains to one (bisection); backup pnr.py.bak_colvonly.
+- Single-chain bisection builds (PNR_VALIDATED_ONLY=1, PNR_COLV_ONLY=<one chain>, PNR_NO_IO_RESERVE=1 = new
+  opt-out: --place used to reserve the other pins' LE slots even for clk/LED0-only designs; --labs
+  38,30:38,31:38,32). Prescaler 17-bit a + 6-bit b (b[5] toggles every 2^22 clocks), b[5] on the chain's
+  source LE; each uses exactly one natiso-core chain + one board-proven direct link:
+  * pnr_chA_open.rbf (eee53c49) ch_dn: b[5] (31 N14) -> A -> r30 (30 N0, line 10) -> up link I1 -> line 29
+    -> LED reg. Row-30 code written: (13,45)+(14,44)+(19,-47)+(21,-47) (checked in the rbf).
+  * pnr_chB_open.rbf (486cba79) ch_dn: b[5] (31 N16) -> B -> r30 line 2 -> up link -> LED.
+  * pnr_chC_open.rbf (ac9c6d0e) ch_up: a in 32/31, tick t (31 N30) down link I30 -> line 15 (proven in
+    pnr_row29), b in row 30, b[5] (30 N12) -> C -> LED reg (31 N2) line 1.
+  * pnr_chD_open.rbf (1a3430f2) ch_up: same, b[5] (30 N18) -> D -> LED line 4.
+  Expected each: LED0 square wave, period 2^23 / 50 MHz = 0.168 s (~6 Hz), starts off.
+- 2026-11-27 board, single chains: chA PASS, chB PASS, chC PASS, chD (1a3430f2) FAIL (LED0 stays off).
+  D = LE(0,-1,I19)->C4(0,0,8)->line 4, code (13,17)+(14,16)+(19,118)+(21,119), accepted from rows
+  25,26,27,29 only (dest row 31 never measured). col_vert_38.json: D set validated=false + "board" FAIL note.
+  D's code was NOT patched. chD2 used a different table entry for the same C4 wire -> line 4:
+  LE(0,-1,I21)->C4(0,0,8)->line 4, code (13,17)+(14,16)+(19,119)+(22,119), measured at rows incl. 30/31.
+  The line-select bits are the same; only the source-driver bits differ ((19,118)+(21,119) vs
+  (19,119)+(22,119)), so D's driver half (I19) is the probable bad part (unproven).
+  work/pnr_chD2_open.rbf (f538356e) = ch_up with b[5] at (38,30,20), PNR_COLV_ONLY=21,8,4 -> board PASS.
+  Entries A/B/C/D2 now carry "board": "PASS ..." in col_vert_38.json (backup in scratchpad col_vert_38_before_Dfail.json).
+- pnr.py: (1) the router's solve() could backtrack without limit on an LAB with no solution (first 30c run hung
+  40+ min with an empty log). New PNR_SOLVE_BUDGET (default 200000 calls) aborts that placement attempt;
+  backup pnr.py.bak_budget. (2) PNR_COLV_ONLY now takes a ';'-separated list of chains.
+- Rebuild work/pnr_lfsr_slow_30c_open.rbf (cf756191165c0bab), PNR_VALIDATED_ONLY=1,
+  PNR_COLV_ONLY="14,16,10;17,18,2;12,4,1;21,8,4" (board-proven only), (38,30..32), rbf.py OK. Cross-row
+  hops: chain B (31 I17 -> C4 Y27 I18 -> 30 line 2), direct links 30 I1 -> 31 line 29 and 31 I30 -> 30 line 15
+  (both board-proven). An unrestricted validated-only build picked 2 unproven chains (31 I2->C4 Y27 I12->line 13,
+  30 I14->C4 Y31 I5->line 3) and was discarded. Expected: LED0 starts off, irregular ~6 steps/s, period 127 steps.

@@ -285,7 +285,8 @@ for a, b in pips:
 # vertical column chains (tools/col_vert.py -> fuzz/col_vert_<x>.json): code of a whole LE_BUFFER -> C4.. ->
 # LOCAL_INTERCONNECT chain, relative to the destination LAB, valid for that column and row phase (y % 4)
 import glob as _glob
-COLV = [e for f_ in _glob.glob(R + "/fuzz/col_vert_*.json") for e in json.load(open(f_))]
+COLV = [e for f_ in _glob.glob(R + "/fuzz/col_vert_*.json") for e in json.load(open(f_))
+        if not (os.environ.get("PNR_VALIDATED_ONLY") and e.get("validated") is False)]
 _into = collections.defaultdict(list)
 for a, b in pips:
     _into[b].append(a)

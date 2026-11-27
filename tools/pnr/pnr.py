@@ -36,6 +36,11 @@ import glob as _glob                       # vertical column chains (tools/col_v
 _LEGAL = {tuple(map(int, l.split())) for l in open(os.path.join(R, "work", "grid", "legal.txt"))}
 for _f in _glob.glob(os.path.join(R, "fuzz", "col_vert_*.json")):
     for _e in json.load(open(_f)):
+        if os.environ.get("PNR_VALIDATED_ONLY") and _e.get("validated") is False:
+            continue                       # single-row (unvalidated) chain codes excluded on request
+        if os.environ.get("PNR_COLV_ONLY") and [h[3] for h in _e["chain"]] not in \
+                [[int(v) for v in c.split(",")] for c in os.environ["PNR_COLV_ONLY"].split(";")]:
+            continue                       # bisection: only this chain (buffer,C4..,line indices)
         for _yd in range(1, 34):
             if (_e["phase"] is not None and _yd % 4 != _e["phase"]) or (_e["x"], _yd) not in _LEGAL:
                 continue
@@ -329,7 +334,7 @@ def place(les, labs, fixed_names, seed):
     slots = [(x, y, n) for (x, y) in labs for n in range(0, 32, 2)]
     fixed = {e["id"]: fixed_names[e["lut"]["name"]] for e in les if e["lut"]["name"] in fixed_names}
     fixed.update({e["id"]: fixed_names[e["ff"]["name"]] for e in les if e["ff"] and e["ff"]["name"] in fixed_names})
-    if any(tuple(v) != (LED_LAB[0], LED_LAB[1], LED_LE) for v in fixed.values()):      # bundle in use
+    if any(tuple(v) != (LED_LAB[0], LED_LAB[1], LED_LE) for v in fixed.values()) and not os.environ.get("PNR_NO_IO_RESERVE"):   # bundle in use (--place alone also lands here: opt out for clk/LED0-only designs)
         reserved = {tuple(v) for p, v in IO_SLOT.items() if p != "A15"} - set(fixed.values())
         slots = [s_ for s_ in slots if s_ not in reserved]
     # carry chains: contiguous runs N0 -> N30, then on into N0 of the LAB below (y - 1); placed first
@@ -516,9 +521,13 @@ def route(les, pos):
             n = pos[e["id"]][2]
             ins = [net for net in e["lut"]["ins"]]
             work.append((e, n, ins))
+        budget = [int(os.environ.get("PNR_SOLVE_BUDGET", "200000"))]
         def solve(idx, acc):
             if idx == len(work):
                 return acc
+            budget[0] -= 1
+            if budget[0] < 0:                      # backtracking budget: give up on this placement
+                return None
             e, n, ins = work[idx]
             uniq = list(dict.fromkeys(ins))
             ar_ = e["lut"].get("arith")

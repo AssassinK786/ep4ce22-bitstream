@@ -162,6 +162,8 @@ def design2(d, ys, yd, sn, use):
          "set_location_assignment PIN_A15 -to y", "set_location_assignment PIN_B13 -to z",
          f"set_location_assignment LCCOMB_X{X}_Y{ys}_N{sn} -to ls", f"set_location_assignment FF_X{X}_Y{ys}_N{sn + 1} -to rs",
          f"set_location_assignment LCCOMB_X{X}_Y{yd}_N0 -to ld", f"set_location_assignment LCCOMB_X{X}_Y{ys}_N{dn} -to lu"]
+    if os.environ.get("QSEED"):                  # seed-noise test only
+        q.append(f"set_global_assignment -name SEED {os.environ['QSEED']}")
     open(d + "/top.v", "w").write("\n".join(v) + "\n"); open(d + "/extra.qsf", "w").write("\n".join(q) + "\n")
 
 
@@ -242,7 +244,7 @@ def forced_iso(chain, yd):
 def nat_iso(ys, yd, sn):
     """Natural route of a source at (X, ys, sn) to (X, yd).N0 and its code: the natural build (with dummy load)
     vs the same design with the dest input tied off, every route pinned by the natural .rcf."""
-    d = f"{R}/work/cvn_{X}_{ys}_{yd}_{sn}"
+    d = f"{R}/work/cvn_{X}_{ys}_{yd}_{sn}" + os.environ.get("CVN_TAG", "")
     if os.path.exists(d + "/result.json"):
         return json.load(open(d + "/result.json"))
     os.makedirs(d, exist_ok=True)
